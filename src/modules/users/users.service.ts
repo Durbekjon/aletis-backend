@@ -22,7 +22,7 @@ export class UsersService {
   async connectBot(userId: number, dto: ConnectBotDto): Promise<Bot> {
     // Check if user already has a bot
     const existingBot = await this.prisma.bot.findUnique({
-      where: { userId },
+      where: { id: userId }, //todo,
     });
 
     if (existingBot) {
@@ -44,7 +44,7 @@ export class UsersService {
     const bot: Bot = await this.prisma.bot.create({
       data: {
         token: encryptedToken,
-        userId,
+        organizationId: userId,
         isEnabled: true,
       },
     });
@@ -54,7 +54,7 @@ export class UsersService {
 
   async getBotByUser(userId: number): Promise<Bot | null> {
     return this.prisma.bot.findUnique({
-      where: { userId },
+      where: { id: userId }, //todo,
     });
   }
 
@@ -96,7 +96,7 @@ export class UsersService {
 
   async getBot(userId: number): Promise<{ bot: Bot | null }> {
     const bot = await this.prisma.bot.findUnique({
-      where: { userId },
+      where: { id: userId }, //todo,
     });
 
     return { bot };
@@ -108,7 +108,7 @@ export class UsersService {
   ): Promise<{ bot: Bot }> {
     // Get current bot to access token
     const currentBot = await this.prisma.bot.findUnique({
-      where: { userId },
+      where: { id: userId }, //todo,
     });
 
     if (!currentBot) {
@@ -123,7 +123,7 @@ export class UsersService {
 
     // Update bot status in database with current timestamp
     const bot = await this.prisma.bot.update({
-      where: { userId },
+      where: { id: userId }, //todo,
       data: {
         isEnabled,
         updatedAt: new Date(), // Force update timestamp to track when bot was enabled/disabled
@@ -212,7 +212,7 @@ export class UsersService {
 
   async toggleBotStatus(userId: number): Promise<{ bot: Bot }> {
     const currentBot = await this.prisma.bot.findUnique({
-      where: { userId },
+      where: { id: userId }, // todo fix this
     });
 
     if (!currentBot) {

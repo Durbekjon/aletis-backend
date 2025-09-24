@@ -186,11 +186,11 @@ export class TelegramService {
 
     // Get current product inventory for this user
     const productContext = await this.productsService.getProductsForAI(
-      bot.userId,
+      bot.organizationId, //todo
     );
 
     // Get user's orders for context
-    const userOrders = await this.ordersService.getOrdersByUser(bot.userId);
+    const userOrders = await this.ordersService.getOrdersByUser(bot.organizationId); //todo
 
     const aiResponse = await this.geminiService.generateResponse(
       userText,
@@ -201,12 +201,12 @@ export class TelegramService {
 
     // Handle order creation intent
     if (aiResponse.intent === 'CREATE_ORDER' && aiResponse.orderData) {
-      await this.handleOrderIntent(aiResponse.orderData, bot.userId);
+      await this.handleOrderIntent(aiResponse.orderData, bot.organizationId);
     }
 
     // Handle order fetching intent
     if (aiResponse.intent === 'FETCH_ORDERS' && aiResponse.shouldFetchOrders) {
-      return await this.handleFetchOrdersIntent(bot.userId);
+      return await this.handleFetchOrdersIntent(bot.organizationId);
     }
 
     return aiResponse.text;
@@ -356,11 +356,7 @@ export class TelegramService {
       );
 
       // Find the user in our system by Telegram ID
-      const user = await this.prisma.user.findUnique({
-        where: {
-          telegramId: BigInt(telegramUserId),
-        },
-      });
+      const user = await this.prisma.user.findFirst();
 
       if (!user) {
         this.logger.log(

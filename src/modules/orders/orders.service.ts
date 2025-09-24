@@ -21,7 +21,7 @@ export class OrdersService {
 
     const order = await this.prisma.order.create({
       data: {
-        userId,
+        organizationId: userId, // todo
         customerName: createOrderDto.customerName,
         customerContact: createOrderDto.customerContact,
         customerAddress: createOrderDto.customerAddress,
@@ -72,7 +72,7 @@ export class OrdersService {
 
   async getOrdersByUser(userId: number): Promise<Order[]> {
     return this.prisma.order.findMany({
-      where: { userId },
+      where: { organizationId: userId },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -109,13 +109,13 @@ export class OrdersService {
 
     const [orders, total] = await Promise.all([
       this.prisma.order.findMany({
-        where: { userId },
+        where: { organizationId: userId }, // todo
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
       this.prisma.order.count({
-        where: { userId },
+        where: { organizationId: userId }, // todo
       }),
     ]);
 
@@ -163,19 +163,19 @@ export class OrdersService {
       topProductsData,
     ] = await Promise.all([
       // Total orders count
-      this.prisma.order.count({ where: { userId } }),
+      this.prisma.order.count({ where: { organizationId: userId } }), //todo
 
       // Status counts in a single query
       this.prisma.order.groupBy({
         by: ['status'],
-        where: { userId },
+        where: { organizationId: userId }, //todo
         _count: { status: true },
       }),
 
       // Last 7 days orders
       this.prisma.order.count({
         where: {
-          userId,
+          organizationId: userId, //todo
           createdAt: { gte: sevenDaysAgo },
         },
       }),
@@ -183,7 +183,7 @@ export class OrdersService {
       // Last 30 days orders
       this.prisma.order.count({
         where: {
-          userId,
+          organizationId: userId, // todo
           createdAt: { gte: thirtyDaysAgo },
         },
       }),
@@ -191,7 +191,7 @@ export class OrdersService {
       // Orders with price data for average calculation
       this.prisma.order.findMany({
         where: {
-          userId,
+          organizationId: userId, //todo
           details: {
             path: ['price'],
             not: 'null',
@@ -204,7 +204,7 @@ export class OrdersService {
 
       // Top products analysis
       this.prisma.order.findMany({
-        where: { userId },
+        where: { organizationId: userId }, //todo,
         select: {
           details: true,
         },

@@ -17,6 +17,7 @@
     "paths": {
       "@modules/*": ["./src/modules/*"],
       "@auth/*": ["./src/modules/auth/*"],
+      "@organizations/*": ["./src/modules/organizations/*"],
       "@core/*": ["./src/core/*"],
       "@prisma/*": ["./src/core/prisma/*"],
       "@/*": ["./src/*"]

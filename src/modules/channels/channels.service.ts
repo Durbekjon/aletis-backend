@@ -17,7 +17,7 @@ export class ChannelsService {
   async getChannelsForUser(userId: number): Promise<Channel[]> {
     return this.prisma.channel.findMany({
       where: {
-        ownerId: userId,
+        // ownerId: userId,
       },
       orderBy: {
         createdAt: 'desc',
@@ -42,16 +42,16 @@ export class ChannelsService {
     });
 
     if (existingChannel) {
-      if (existingChannel.ownerId === userId) {
+      // if (existingChannel.ownerId === userId) {
         this.logger.log(
           `Channel ${channelId} is already connected to user ${userId}`,
         );
         return existingChannel;
-      } else {
-        throw new ConflictException(
-          'Channel is already connected to another user',
-        );
-      }
+      // } else {
+      //   throw new ConflictException(
+      //     'Channel is already connected to another user',
+      //   );
+      // }
     }
 
     // Create new channel connection
@@ -59,7 +59,7 @@ export class ChannelsService {
       data: {
         telegramId: channelId,
         title: channelTitle,
-        ownerId: userId,
+        organizationId: userId,
       },
     });
 
@@ -83,11 +83,11 @@ export class ChannelsService {
       throw new NotFoundException('Channel not found');
     }
 
-    if (channel.ownerId !== userId) {
-      throw new ForbiddenException(
-        'You are not authorized to disconnect this channel',
-      );
-    }
+    // if (channel.ownerId !== userId) { todo fix this
+    //   throw new ForbiddenException(
+    //     'You are not authorized to disconnect this channel',
+    //   );
+    // }
 
     // Delete the channel
     await this.prisma.channel.delete({
