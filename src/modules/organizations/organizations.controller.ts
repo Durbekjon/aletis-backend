@@ -8,7 +8,7 @@ import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Organizations')
-@ApiBearerAuth('access')
+@ApiBearerAuth('bearer')
 @UseGuards(JwtAuthGuard)
 @Controller({ path: 'organizations', version: '1' })
 export class OrganizationsController {
@@ -18,18 +18,15 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Create organization' })
   @ApiBody({ type: CreateOrganizationDto })
   @ApiOkResponse({ description: 'Created organization' })
-  create(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: CreateOrganizationDto,
-  ) {
+  create(@CurrentUser() user: JwtPayload, @Body() dto: CreateOrganizationDto) {
     return this.service.createOrganization(Number(user.userId), dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List organizations of current user' })
-  @ApiOkResponse({ description: 'List organizations' })
+  @ApiOperation({ summary: 'Get organization of current user' })
+  @ApiOkResponse({ description: 'organization of current user' })
   list(@CurrentUser() user: JwtPayload) {
-    return this.service.getMyOrganizations(Number(user.userId));
+    return this.service.getMyOrganization(Number(user.userId));
   }
 
   @Get(':id')

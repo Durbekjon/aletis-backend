@@ -8,34 +8,94 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  firstName String?
-  lastName  String?
-  email     String   @unique
-  password  String
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  firstName        String?
+  lastName         String?
+  email            String    @unique
+  password         String
   refreshToken     String?
   resetToken       String?
   resetTokenExpiry DateTime?
-  member    Member?
+  member           Member?
 
   @@map("users")
 }
 
 model Organization {
-  id          Int       @id @default(autoincrement())
-  name        String    @default("Untitled")
+  id          Int            @id @default(autoincrement())
+  name        String         @default("Untitled")
   description String?
   bots        Bot[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   channels    Channel[]
   members     Member[]
   products    Product[]
   orders      Order[]
+  schema      ProductSchema?
 
   @@map("organizations")
+}
+
+model Product {
+  id             Int    @id @default(autoincrement())
+  organizationId Int
+  name           String
+  price          Float
+  images         Json
+
+  schemaId     Int
+  schema       ProductSchema       @relation(fields: [schemaId], references: [id])
+  fields       ProductFieldValue[]
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt()
+
+  @@map("products")
+}
+
+model ProductSchema {
+  id             Int           @id @default(autoincrement())
+  name           String
+  fields         SchemaField[]
+  products       Product[]
+  organizationId Int           @unique
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+
+  @@map("product_schemas")
+}
+
+model SchemaField {
+  id                 Int                 @id @default(autoincrement())
+  schemaId           Int
+  schema             ProductSchema       @relation(fields: [schemaId], references: [id])
+  name               String
+  type               FieldType
+  required           Boolean
+  productFieldValues ProductFieldValue[]
+
+  @@map("schema_fields")
+}
+
+model ProductFieldValue {
+  id        Int         @id @default(autoincrement())
+  productId Int
+  fieldId   Int
+  value     String
+  product   Product     @relation(fields: [productId], references: [id])
+  field     SchemaField @relation(fields: [fieldId], references: [id])
+
+  @@map("product_field_values")
+}
+
+enum FieldType {
+  TEXT
+  NUMBER
+  DATE
+  IMAGE
+  BOOLEAN
 }
 
 model Member {
@@ -96,21 +156,21 @@ model Message {
   @@map("messages")
 }
 
-model Product {
-  id             Int      @id @default(autoincrement())
-  organizationId Int
-  name           String
-  description    String?
-  price          Decimal? @db.Decimal(10, 2)
-  stock          Int      @default(0)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+// model Product {
+//   id             Int      @id @default(autoincrement())
+//   organizationId Int
+//   name           String
+//   description    String?
+//   price          Decimal? @db.Decimal(10, 2)
+//   stock          Int      @default(0)
+//   isActive       Boolean  @default(true)
+//   createdAt      DateTime @default(now())
+//   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+//   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@map("products")
-}
+//   @@map("products")
+// }
 
 model Order {
   id              Int          @id @default(autoincrement())

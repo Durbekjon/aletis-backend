@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
@@ -8,7 +13,17 @@ import type { Organization, MemberRole, MemberStatus } from '@prisma/client';
 export class OrganizationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createOrganization(userId: number, dto: CreateOrganizationDto): Promise<Organization> {
+  async createOrganization(
+    userId: number,
+    dto: CreateOrganizationDto,
+  ): Promise<Organization> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { member: true },
+    });
+    if (user?.member) {
+      throw new BadRequestException('Organization is allready exist');
+    }
     const organization = await this.prisma.organization.create({
       data: {
         name: dto.name,
@@ -25,11 +40,15 @@ export class OrganizationsService {
     return organization;
   }
 
-  async getMyOrganizations(userId: number): Promise<Organization[]> {
-    return this.prisma.organization.findMany({
+  async getMyOrganization(userId: number): Promise<Organization> {
+    const organizations = await this.prisma.organization.findMany({
       where: { members: { some: { userId } } },
       orderBy: { createdAt: 'desc' },
     });
+    if (!organizations || organizations.length !== 1) {
+      throw new NotFoundException('Organization not found');
+    }
+    return organizations[0];
   }
 
   async getOrganizationById(userId: number, id: number) {
@@ -64,7 +83,10 @@ export class OrganizationsService {
     await this.ensureAdmin(userId, id);
     return this.prisma.organization.update({
       where: { id },
-      data: { name: dto.name ?? undefined, description: dto.description ?? undefined },
+      data: {
+        name: dto.name ?? undefined,
+        description: dto.description ?? undefined,
+      },
     });
   }
 
@@ -74,5 +96,3 @@ export class OrganizationsService {
     return this.prisma.organization.delete({ where: { id } });
   }
 }
-
-

@@ -94,7 +94,7 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access')
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Logout user (invalidate refresh token)' })
   @ApiOkResponse({ description: 'Logged out' })
   async logout(@CurrentUser() user: JwtPayload): Promise<void> {
@@ -103,7 +103,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  @ApiBearerAuth('access')
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Get current user from JWT' })
   @ApiOkResponse({
     description: 'Current JWT payload',
@@ -187,7 +187,7 @@ export class AuthController {
     }
 
     const url = new URL(frontendRedirectBase);
-    url.searchParams.set('access', result.accessToken);
+    url.searchParams.set('bearer', result.accessToken);
     url.searchParams.set('refresh', result.refreshToken);
     url.searchParams.set('isNew', String(result.isNew));
 
