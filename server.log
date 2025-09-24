@@ -1,0 +1,58 @@
+
+> flovo-backend@0.0.1 start:dev
+> nest start --watch
+
+[2J[3J[H[[90m2:06:53 PM[0m] Starting compilation in watch mode...
+
+[[90m2:06:55 PM[0m] Found 0 errors. Watching for file changes.
+
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mIndexModule dependencies initialized[39m[38;5;3m +16ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mModulesModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPrismaModule dependencies initialized[39m[38;5;3m +10ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSecurityModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mLoggingModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +9ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mThrottlerModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mThrottlerModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mWinstonModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCacheModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCoreModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mJwtModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mProductsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTelegramModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mChannelsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mUsersModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mOrdersModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/auth/telegram}:[39m[38;5;3m +4ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/auth/telegram/login, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/auth/telegram/me, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mUsersController {/users}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/users/bot, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/users/bot, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/users/bot/toggle, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/users/bot/start, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/users/bot/stop, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mHealthController {/healthz}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/healthz, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mTelegramController {/telegram}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/telegram/webhook, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mOrdersController {/orders}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/orders, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/orders, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/orders/summary, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mProductsController {/products}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/products, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/products, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/products/:id, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/products/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mChannelsController {/channels}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/channels, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/channels/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[PrismaService] [39m[32mDatabase connected successfully[39m
+[32m[Nest] 60879  - [39m08/19/2025, 2:06:56 PM [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +2ms[39m
+🚀 Application is running on: http://localhost:4000
+📊 Health check: http://localhost:4000/health

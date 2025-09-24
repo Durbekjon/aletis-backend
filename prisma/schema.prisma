@@ -1,0 +1,140 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int        @id @default(autoincrement())
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  telegramId       BigInt     @unique
+  telegramUsername String?
+  firstName        String?
+  lastName         String?
+  companyName      String?
+  companyType      CompanyType?
+  bot              Bot?
+  orders           Order[]
+  products         Product[]
+  channels          Channel[]
+
+  @@map("users")
+}
+
+model Bot {
+  id            Int            @id @default(autoincrement())
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  token         String         @unique
+  isEnabled     Boolean        @default(true)
+  userId        Int            @unique
+  user          User           @relation(fields: [userId], references: [id])
+  conversations Conversation[]
+
+  @@map("bots")
+}
+
+model Conversation {
+  id        String   @id @unique
+  createdAt DateTime @default(now())
+  botId     Int
+  bot       Bot      @relation(fields: [botId], references: [id])
+  messages  Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  createdAt      DateTime     @default(now())
+  sender         SenderType
+  content        String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@map("messages")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  name        String
+  description String?
+  price       Decimal? @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("products")
+}
+
+model Order {
+  id              Int          @id @default(autoincrement())
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  status          OrderStatus  @default(PENDING)
+  customerName    String?
+  customerContact String?
+  customerAddress String?
+  details         Json
+  userId          Int
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)], name: "idx_orders_user_created")
+  @@index([status], name: "idx_orders_status")
+  @@index([customerContact], name: "idx_orders_customer_contact")
+  @@index([userId, status], name: "idx_orders_user_status")
+  @@index([createdAt(sort: Desc)], name: "idx_orders_created_at")
+  @@index([userId, createdAt(sort: Desc), status], name: "idx_orders_user_created_status")
+  @@map("orders")
+}
+
+model Channel {
+  id          Int      @id @default(autoincrement())
+  telegramId  BigInt   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  title       String
+  ownerId     Int
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  @@map("channels")
+}
+
+enum CompanyType {
+  CLOTHING
+  FOOD
+  FURNITURE
+  ELECTRONICS
+  COSMETICS
+  TOYS
+  BOOKS
+  SPORTS
+  HEALTH
+  OTHER
+}
+
+enum SenderType {
+  USER
+  BOT
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
