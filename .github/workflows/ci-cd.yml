@@ -31,6 +31,7 @@ jobs:
             echo "❌ GHCR_TOKEN is empty"
           else
             echo ${{ secrets.GHCR_TOKEN }}
+            echo "is your GHCR_TOKEN"
             echo "✅ GHCR_TOKEN is set (length: ${#GHCR_TOKEN})"
           fi
 
