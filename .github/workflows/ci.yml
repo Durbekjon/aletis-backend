@@ -39,7 +39,3 @@ jobs:
         run: npm run prisma:migrate:deploy
       - name: Build
         run: npm run build
-      - name: Test
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flovo?schema=public
-
