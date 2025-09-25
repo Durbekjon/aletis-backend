@@ -66,7 +66,7 @@ export class TelegramService {
     try {
       // Step 1: Identify bot (for now, we'll use a simple approach)
       // In production, we'd need to identify which bot this webhook belongs to
-      const bot = await this.findBotForChat(chatId);
+      const bot = await this.findBotForChat();
       if (!bot) {
         this.logger.warn(`No bot found for chat ${chatId}`);
         return;
@@ -123,14 +123,14 @@ export class TelegramService {
 
       this.logger.log(`Successfully processed message from chat ${chatId}`);
     } catch (error) {
-      this.logger.error(
-        `Error processing update: ${error.message}`,
-        error.stack,
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Error processing update: ${errorMessage}`, errorStack);
     }
   }
 
-  private async findBotForChat(chatId: string): Promise<Bot | null> {
+  private async findBotForChat(): Promise<Bot | null> {
     // For MVP, we'll return the first available bot
     // TODO: Implement proper bot identification based on webhook URL or token
     return this.prisma.bot.findFirst({
@@ -190,7 +190,9 @@ export class TelegramService {
     );
 
     // Get user's orders for context
-    const userOrders = await this.ordersService.getOrdersByUser(bot.organizationId); //todo
+    const userOrders = await this.ordersService.getOrdersByUser(
+      bot.organizationId,
+    ); //todo
 
     const aiResponse = await this.geminiService.generateResponse(
       userText,
@@ -221,13 +223,19 @@ export class TelegramService {
     try {
       const order = await this.ordersService.createOrderFromIntent(
         userId,
-        orderData,
+        orderData as {
+          customerName?: string;
+          customerContact?: string;
+          customerAddress?: string;
+          items?: string;
+          notes?: string;
+        },
       );
       this.logger.log(`Order created successfully: ${order.id}`);
     } catch (error) {
       this.logger.error(
-        `Failed to create order: ${error.message}`,
-        error.stack,
+        `Failed to create order: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
       );
     }
   }
@@ -248,8 +256,8 @@ export class TelegramService {
         .map((order) => {
           const status = order.status.toLowerCase();
           const date = new Date(order.createdAt).toLocaleDateString();
-          const details = order.details as any;
-          const items = details?.items || 'N/A';
+          const details = order.details as Record<string, unknown>;
+          const items = (details?.items as string) || 'N/A';
           return `• Order #${order.id}: ${items} (${status}) - ${date}`;
         })
         .join('\n');
@@ -266,8 +274,8 @@ export class TelegramService {
       return response + `\n\nIs there anything else I can help you with today?`;
     } catch (error) {
       this.logger.error(
-        `Failed to fetch orders: ${error.message}`,
-        error.stack,
+        `Failed to fetch orders: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
       );
       return "Oops! I'm having trouble accessing your orders right now. Can you try asking again in a moment?";
     }
@@ -312,7 +320,9 @@ export class TelegramService {
             );
           }
 
-          const result = await response.json();
+          const result = (await response.json()) as {
+            result?: { message_id?: number };
+          };
           this.logger.log(
             `Message sent successfully to chat ${chatId}, message_id: ${result.result?.message_id}`,
           );
@@ -326,13 +336,16 @@ export class TelegramService {
       );
     } catch (error) {
       this.logger.error(
-        `Failed to send Telegram reply to chat ${chatId} after retries: ${error.message}`,
-        error.stack,
+        `Failed to send Telegram reply to chat ${chatId} after retries: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
       );
     }
   }
 
-  private async handleChannelConnection(message: any): Promise<void> {
+  private async handleChannelConnection(message: {
+    chat: { id: string | number; type: string; title?: string };
+    from: { id: number };
+  }): Promise<void> {
     this.logger.log(
       `Handling channel connection command from chat ${message.chat.id}`,
     );
@@ -347,7 +360,7 @@ export class TelegramService {
       }
 
       // Extract required data
-      const channelId = BigInt(message.chat.id);
+      const channelId = BigInt(String(message.chat.id));
       const channelTitle = message.chat.title || 'Unknown Channel';
       const telegramUserId = message.from.id;
 
@@ -380,8 +393,8 @@ export class TelegramService {
       );
     } catch (error) {
       this.logger.error(
-        `Error handling channel connection: ${error.message}`,
-        error.stack,
+        `Error handling channel connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
       );
 
       // Try to send error message to channel if possible
@@ -389,7 +402,7 @@ export class TelegramService {
         await this.sendChannelConnectionError(message.chat.id.toString());
       } catch (sendError) {
         this.logger.error(
-          `Failed to send error message to channel: ${sendError.message}`,
+          `Failed to send error message to channel: ${sendError instanceof Error ? sendError.message : 'Unknown error'}`,
         );
       }
     }
@@ -450,7 +463,9 @@ export class TelegramService {
             );
           }
 
-          const result = await response.json();
+          const result = (await response.json()) as {
+            result?: { message_id?: number };
+          };
           this.logger.log(
             `Message sent successfully to chat ${chatId}, message_id: ${result.result?.message_id}`,
           );
@@ -464,8 +479,8 @@ export class TelegramService {
       );
     } catch (error) {
       this.logger.error(
-        `Failed to send Telegram message to chat ${chatId}: ${error.message}`,
-        error.stack,
+        `Failed to send Telegram message to chat ${chatId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
       );
       throw error;
     }

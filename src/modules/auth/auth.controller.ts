@@ -144,7 +144,7 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Initiate Google OAuth 2.0 login' })
   @ApiOkResponse({ description: 'Redirects to Google consent screen' })
-  async googleAuth() {
+  googleAuth() {
     return;
   }
 
@@ -169,14 +169,18 @@ export class AuthController {
       },
     },
   })
-  async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
+  async googleAuthRedirect(
+    @Req()
+    req: { user?: { email?: string; firstName?: string; lastName?: string } },
+    @Res() res: Response,
+  ) {
     const payload = req?.user ?? {};
     const result = await this.authService.handleGoogleLogin({
       email: payload?.email,
       firstName: payload?.firstName,
       lastName: payload?.lastName,
     });
-    const nodeEnv = await this.config.get('NODE_ENV');
+    const nodeEnv = this.config.get<string>('NODE_ENV');
     const frontendRedirectBase =
       nodeEnv === 'production'
         ? this.config.get<string>('FRONTEND_PRODUCTION_URL')

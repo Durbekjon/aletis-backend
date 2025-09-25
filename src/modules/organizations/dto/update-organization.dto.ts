@@ -14,5 +14,3 @@ export class UpdateOrganizationDto {
   @MaxLength(500)
   description?: string | null;
 }
-
-

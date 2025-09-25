@@ -114,7 +114,11 @@ export class AuthService {
     return { resetToken };
   }
 
-  async handleGoogleLogin(payload: any): Promise<
+  async handleGoogleLogin(payload: {
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<
     Tokens & {
       user: {
         id: number;
@@ -124,7 +128,7 @@ export class AuthService {
       };
       isNew: boolean;
     }
-    > {
+  > {
     if (!payload.email) {
       throw new UnauthorizedException('Google account has no email');
     }

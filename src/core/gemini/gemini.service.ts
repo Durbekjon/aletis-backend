@@ -43,7 +43,7 @@ export class GeminiService {
 
       this.logger.log('Generating AI response...');
       const result = await model.generateContent(prompt);
-      const response = await result.response;
+      const response = result.response;
       const text = response.text();
 
       // Parse the response for intents
@@ -52,9 +52,12 @@ export class GeminiService {
       this.logger.log(`AI response generated: ${text.substring(0, 100)}...`);
       return parsedResponse;
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        `Error generating AI response: ${error.message}`,
-        error.stack,
+        `Error generating AI response: ${errorMessage}`,
+        errorStack,
       );
 
       // Fallback response
@@ -124,7 +127,7 @@ ${productInfo}
 ${
   userOrders && userOrders.length > 0
     ? `CUSTOMER'S ORDER HISTORY:
-${userOrders.map((order) => `- Order #${order.id}: ${order.details?.items || 'N/A'} (${order.status})`).join('\n')}`
+${userOrders.map((order: Record<string, unknown>) => `- Order #${order.id as number}: ${((order.details as Record<string, unknown>)?.items as string) || 'N/A'} (${order.status as string})`).join('\n')}`
     : ''
 }
 
@@ -164,7 +167,7 @@ Flovo:`;
 
     if (orderMatch) {
       try {
-        const orderData = JSON.parse(orderMatch[1]);
+        const orderData = JSON.parse(orderMatch[1]) as Record<string, unknown>;
         const responseText = aiText
           .replace(/\[INTENT:CREATE_ORDER\][\s\S]*/, '')
           .trim();
@@ -176,7 +179,7 @@ Flovo:`;
           intent: 'CREATE_ORDER',
           orderData,
         };
-      } catch (error) {
+      } catch {
         this.logger.warn('Failed to parse order data from AI response');
       }
     }

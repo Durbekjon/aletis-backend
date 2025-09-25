@@ -23,7 +23,7 @@ export class ProductsService {
 
   async getProductsByUser(userId: number): Promise<Product[]> {
     return this.prisma.product.findMany({
-      where: { organizationId: userId, isActive: true },//todo
+      where: { organizationId: userId, isActive: true }, //todo
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -53,7 +53,7 @@ export class ProductsService {
     updateData: Partial<CreateProductDto>,
   ): Promise<Product> {
     return this.prisma.product.update({
-      where: { id: productId, organizationId:userId },//todo
+      where: { id: productId, organizationId: userId }, //todo
       data: updateData,
     });
   }

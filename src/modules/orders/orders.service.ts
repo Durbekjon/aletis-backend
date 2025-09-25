@@ -31,14 +31,23 @@ export class OrdersService {
     });
 
     // Invalidate related cache entries
-    await this.cacheService.invalidatePattern(`dashboard:summary:${userId}`);
-    await this.cacheService.invalidatePattern(`orders:user:${userId}:*`);
+    this.cacheService.invalidatePattern(`dashboard:summary:${userId}`);
+    this.cacheService.invalidatePattern(`orders:user:${userId}:*`);
 
     this.logger.log(`Order created with ID: ${order.id}`);
     return order;
   }
 
-  async createOrderFromIntent(userId: number, orderData: any): Promise<Order> {
+  async createOrderFromIntent(
+    userId: number,
+    orderData: {
+      customerName?: string;
+      customerContact?: string;
+      customerAddress?: string;
+      items?: string;
+      notes?: string;
+    },
+  ): Promise<Order> {
     this.logger.log(
       `Creating order from AI intent for user ${userId}:`,
       orderData,
@@ -97,7 +106,7 @@ export class OrdersService {
     const cacheKey = this.cacheService.getUserOrdersKey(userId, page, limit);
 
     // Try to get from cache first
-    const cached = await this.cacheService.get<{
+    const cached = this.cacheService.get<{
       orders: Order[];
       total: number;
     }>(cacheKey);
@@ -122,7 +131,7 @@ export class OrdersService {
     const result = { orders, total };
 
     // Cache the result for 2 minutes
-    await this.cacheService.set(cacheKey, result, 2 * 60 * 1000);
+    this.cacheService.set(cacheKey, result, 2 * 60 * 1000);
 
     return result;
   }
@@ -143,7 +152,7 @@ export class OrdersService {
 
     // Try to get from cache first
     const cached =
-      await this.cacheService.get<ReturnType<typeof this.getDashboardSummary>>(
+      this.cacheService.get<ReturnType<typeof this.getDashboardSummary>>(
         cacheKey,
       );
     if (cached) {
@@ -228,8 +237,10 @@ export class OrdersService {
     let averageOrderValue: number | undefined;
     if (ordersWithPrices.length > 0) {
       const totalValue = ordersWithPrices.reduce((sum, order) => {
-        const details = order.details as any;
-        return sum + (details?.price || details?.total || 0);
+        const details = order.details as Record<string, unknown>;
+        return (
+          sum + ((details?.price as number) || (details?.total as number) || 0)
+        );
       }, 0);
       averageOrderValue = totalValue / ordersWithPrices.length;
     }
@@ -237,8 +248,8 @@ export class OrdersService {
     // Process top products
     const productCounts: Record<string, number> = {};
     topProductsData.forEach((order) => {
-      const details = order.details as any;
-      const items = details?.items || 'Unknown Product';
+      const details = order.details as Record<string, unknown>;
+      const items = (details?.items as string) || 'Unknown Product';
       productCounts[items] = (productCounts[items] || 0) + 1;
     });
 
@@ -261,7 +272,7 @@ export class OrdersService {
     };
 
     // Cache the result for 5 minutes
-    await this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+    this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
 
     return result;
   }

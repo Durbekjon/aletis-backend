@@ -30,15 +30,12 @@ export class RetryService {
         return await operation();
       } catch (error) {
         lastError = error as Error;
-        
+
         if (attempt === maxAttempts) {
-          this.logger.error(
-            `Operation failed after ${maxAttempts} attempts`,
-            {
-              error: lastError.message,
-              stack: lastError.stack,
-            },
-          );
+          this.logger.error(`Operation failed after ${maxAttempts} attempts`, {
+            error: lastError.message,
+            stack: lastError.stack,
+          });
           throw lastError;
         }
 
@@ -63,6 +60,6 @@ export class RetryService {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

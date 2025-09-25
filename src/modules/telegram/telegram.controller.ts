@@ -7,7 +7,9 @@ export class TelegramController {
   constructor(private readonly telegramService: TelegramService) {}
 
   @Post('webhook')
-  async handleWebhook(@Body() webhookData: TelegramWebhookDto): Promise<{ status: string }> {
+  async handleWebhook(
+    @Body() webhookData: TelegramWebhookDto,
+  ): Promise<{ status: string }> {
     await this.telegramService.processUpdate(webhookData);
     return { status: 'ok' };
   }

@@ -18,7 +18,7 @@ export class CacheService {
     setInterval(() => this.cleanup(), 60 * 1000);
   }
 
-  async get<T>(key: string): Promise<T | null> {
+  get<T>(key: string): T | null {
     const item = this.cache.get(key);
 
     if (!item) {
@@ -31,10 +31,10 @@ export class CacheService {
       return null;
     }
 
-    return item.value;
+    return item.value as T;
   }
 
-  async set<T>(key: string, value: T, ttl?: number): Promise<void> {
+  set<T>(key: string, value: T, ttl?: number): void {
     const item: CacheItem<T> = {
       value,
       timestamp: Date.now(),
@@ -44,11 +44,11 @@ export class CacheService {
     this.cache.set(key, item);
   }
 
-  async delete(key: string): Promise<void> {
+  delete(key: string): void {
     this.cache.delete(key);
   }
 
-  async invalidatePattern(pattern: string): Promise<void> {
+  invalidatePattern(pattern: string): void {
     const keys = Array.from(this.cache.keys());
     const regex = new RegExp(pattern);
 

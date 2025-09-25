@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 import {
   Injectable,
   CanActivate,
@@ -57,8 +58,11 @@ export class RateLimitGuard implements CanActivate {
     return true;
   }
 
-  private getClientId(request: any): string {
+  private getClientId(request: {
+    ip?: string;
+    connection?: { remoteAddress?: string };
+  }): string {
     // Use IP address as client identifier
-    return request.ip || request.connection.remoteAddress || 'unknown';
+    return request.ip || request.connection?.remoteAddress || 'unknown';
   }
 }

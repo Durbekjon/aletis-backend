@@ -8,11 +8,13 @@ export class CreateOrganizationDto {
   @MaxLength(120)
   name: string;
 
-  @ApiProperty({ example: 'We sell everything', required: false, nullable: true })
+  @ApiProperty({
+    example: 'We sell everything',
+    required: false,
+    nullable: true,
+  })
   @IsString()
   @IsOptional()
   @MaxLength(500)
   description?: string | null;
 }
-
-

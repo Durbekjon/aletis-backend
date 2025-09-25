@@ -24,10 +24,15 @@ import { ThrottlerGuard } from '@nestjs/throttler';
   ],
   providers: [
     // Only apply throttling in production or if explicitly enabled
-    ...(process.env.NODE_ENV === 'production' || process.env.ENABLE_THROTTLING === 'true' ? [{
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    }] : []),
+    ...(process.env.NODE_ENV === 'production' ||
+    process.env.ENABLE_THROTTLING === 'true'
+      ? [
+          {
+            provide: APP_GUARD,
+            useClass: ThrottlerGuard,
+          },
+        ]
+      : []),
   ],
 })
 export class SecurityModule {}

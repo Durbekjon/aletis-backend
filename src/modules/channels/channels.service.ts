@@ -1,11 +1,5 @@
 import { PrismaService } from '@core/prisma/prisma.service';
-import {
-  Injectable,
-  ConflictException,
-  NotFoundException,
-  ForbiddenException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import type { Channel } from '@prisma/client';
 
 @Injectable()
@@ -17,7 +11,7 @@ export class ChannelsService {
   async getChannelsForUser(userId: number): Promise<Channel[]> {
     return this.prisma.channel.findMany({
       where: {
-        // ownerId: userId,
+        organizationId: userId,
       },
       orderBy: {
         createdAt: 'desc',
@@ -43,10 +37,10 @@ export class ChannelsService {
 
     if (existingChannel) {
       // if (existingChannel.ownerId === userId) {
-        this.logger.log(
-          `Channel ${channelId} is already connected to user ${userId}`,
-        );
-        return existingChannel;
+      this.logger.log(
+        `Channel ${channelId} is already connected to user ${userId}`,
+      );
+      return existingChannel;
       // } else {
       //   throw new ConflictException(
       //     'Channel is already connected to another user',

@@ -24,17 +24,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
-    let details: any = null;
+    let details: string | null = null;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
-      
+
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
-      } else if (typeof exceptionResponse === 'object') {
-        message = (exceptionResponse as any).message || exception.message;
-        details = (exceptionResponse as any).error || null;
+      } else if (
+        typeof exceptionResponse === 'object' &&
+        exceptionResponse !== null
+      ) {
+        const responseObj = exceptionResponse as Record<string, unknown>;
+        message = (responseObj.message as string) || exception.message;
+        details = (responseObj.error as string) || null;
       }
     } else if (exception instanceof Error) {
       message = exception.message;
@@ -42,18 +46,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     // Log the error with request context
-    this.logger.error(
-      `Request failed: ${request.method} ${request.url}`,
-      {
-        requestId,
-        status,
-        message,
-        userAgent: request.headers['user-agent'],
-        ip: request.ip,
-        timestamp: new Date().toISOString(),
-        stack: details,
-      },
-    );
+    this.logger.error(`Request failed: ${request.method} ${request.url}`, {
+      requestId,
+      status,
+      message,
+      userAgent: request.headers['user-agent'],
+      ip: request.ip,
+      timestamp: new Date().toISOString(),
+      stack: details,
+    });
 
     // Don't expose stack traces in production
     const isProduction = process.env.NODE_ENV === 'production';
