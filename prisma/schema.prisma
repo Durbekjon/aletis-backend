@@ -94,7 +94,7 @@ enum FieldType {
   TEXT
   NUMBER
   DATE
-  IMAGE
+  FILE
   BOOLEAN
 }
 

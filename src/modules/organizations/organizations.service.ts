@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
-import type { Organization, MemberRole, MemberStatus } from '@prisma/client';
+import { Organization, MemberRole, MemberStatus } from '@prisma/client';
 
 @Injectable()
 export class OrganizationsService {
@@ -35,6 +35,14 @@ export class OrganizationsService {
             status: 'ACTIVE' as MemberStatus,
           },
         },
+      },
+    });
+
+    await this.prisma.member.create({
+      data: {
+        organization: { connect: { id: organization.id } },
+        user: { connect: { id: userId } },
+        status: MemberStatus.ACTIVE,
       },
     });
     return organization;
@@ -92,7 +100,6 @@ export class OrganizationsService {
 
   async deleteOrganization(userId: number, id: number): Promise<Organization> {
     await this.ensureAdmin(userId, id);
-    // soft delete strategy can be implemented with an `isDeleted` flag; for now, hard delete
     return this.prisma.organization.delete({ where: { id } });
   }
 }
