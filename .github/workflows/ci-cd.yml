@@ -24,6 +24,14 @@ jobs:
           --health-retries 10
 
     steps:
+      - name: Debug secrets
+        run: |
+          if [ -z "${{ secrets.GHCR_TOKEN }}" ]; then
+            echo "❌ GHCR_TOKEN is empty"
+          else
+            echo "✅ GHCR_TOKEN is set (length: ${#GHCR_TOKEN})"
+          fi
+
       # 1. Checkout
       - uses: actions/checkout@v4
       
