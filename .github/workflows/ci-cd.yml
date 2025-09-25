@@ -60,7 +60,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: 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
+          password: ${{ secrets.GHCR_TOKEN }}
 
       # 8. Build & push image
       - name: Build and push image
@@ -78,7 +78,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-            echo 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 | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             docker pull ghcr.io/$REPO:latest
 
