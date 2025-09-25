@@ -54,14 +54,14 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.MY_TOKEN }}
 
       # 8. Build & push image
-    - name: Build and push image
-      run: |
-        REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-        docker build -t ghcr.io/$REPO:latest .
-        docker push ghcr.io/$REPO:latest
+      - name: Build and push image
+        run: |
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          docker build -t ghcr.io/$REPO:latest .
+          docker push ghcr.io/$REPO:latest
 
       # 9. Deploy to VPS via SSH
       - name: Deploy to VPS
@@ -76,6 +76,6 @@ jobs:
             docker pull ghcr.io/$REPO:latest
             docker stop flovo || true
             docker rm flovo || true
-            docker run -d --name flovo -p 3000:3000 \
+            docker run -d --name flovo -p 4005:4000 \
               -e DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL }} \
               ghcr.io/$REPO:latest
