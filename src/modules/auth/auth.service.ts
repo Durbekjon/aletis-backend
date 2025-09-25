@@ -114,11 +114,7 @@ export class AuthService {
     return { resetToken };
   }
 
-  async handleGoogleLogin(payload: {
-    email?: string;
-    firstName?: string;
-    lastName?: string;
-  }): Promise<
+  async handleGoogleLogin(payload: any): Promise<
     Tokens & {
       user: {
         id: number;

@@ -79,10 +79,7 @@ export class UsersService {
         );
       }
 
-      const data = (await response.json()) as {
-        ok?: boolean;
-        result?: { is_bot?: boolean };
-      };
+      const data = await response.json();
 
       if (!data.ok || !data.result?.is_bot) {
         throw new BadRequestException('Invalid bot token: Not a valid bot');
@@ -158,10 +155,7 @@ export class UsersService {
         body: JSON.stringify({ url: webhookUrl }),
       });
 
-      const result = (await response.json()) as {
-        ok?: boolean;
-        description?: string;
-      };
+      const result = await response.json();
 
       if (!response.ok || !result.ok) {
         throw new Error(
@@ -181,10 +175,7 @@ export class UsersService {
         headers: { 'Content-Type': 'application/json' },
       });
 
-      const result = (await response.json()) as {
-        ok?: boolean;
-        description?: string;
-      };
+      const result = await response.json();
 
       if (!response.ok || !result.ok) {
         this.logger.warn(

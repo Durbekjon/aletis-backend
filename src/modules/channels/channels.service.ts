@@ -1,5 +1,11 @@
 import { PrismaService } from '@core/prisma/prisma.service';
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import type { Channel } from '@prisma/client';
 
 @Injectable()
@@ -11,7 +17,7 @@ export class ChannelsService {
   async getChannelsForUser(userId: number): Promise<Channel[]> {
     return this.prisma.channel.findMany({
       where: {
-        organizationId: userId,
+        // ownerId: userId,
       },
       orderBy: {
         createdAt: 'desc',

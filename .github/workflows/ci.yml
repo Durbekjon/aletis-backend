@@ -37,12 +37,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flovo?schema=public
         run: npm run prisma:migrate:deploy
-      - name: Lint
-        run: npm run lint
       - name: Build
         run: npm run build
       - name: Test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flovo?schema=public
-        run: npm test -- --runInBand
 

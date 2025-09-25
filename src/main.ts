@@ -73,4 +73,4 @@ async function bootstrap() {
   console.log(`📚 Swagger docs: http://localhost:${port}/api-docs`);
   console.log(`📊 Health check: http://localhost:${port}/health`);
 }
-void bootstrap();
+bootstrap();
