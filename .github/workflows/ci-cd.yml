@@ -57,10 +57,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # 8. Build & push image
-      - name: Build and push image
-        run: |
-          docker build -t ghcr.io/${{ github.repository }}:latest .
-          docker push ghcr.io/${{ github.repository }}:latest
+    - name: Build and push image
+      run: |
+        REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        docker build -t ghcr.io/$REPO:latest .
+        docker push ghcr.io/$REPO:latest
 
       # 9. Deploy to VPS via SSH
       - name: Deploy to VPS
@@ -70,10 +71,11 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.MY_TOKEN }}
-            docker pull ghcr.io/${{ github.repository }}:latest
+            docker pull ghcr.io/$REPO:latest
             docker stop flovo || true
             docker rm flovo || true
             docker run -d --name flovo -p 3000:3000 \
               -e DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL }} \
-              ghcr.io/${{ github.repository }}:latest
+              ghcr.io/$REPO:latest
