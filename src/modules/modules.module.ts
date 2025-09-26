@@ -6,16 +6,19 @@ import { OrdersModule } from './orders/orders.module';
 import { ProductsModule } from './products/products.module';
 import { ChannelsModule } from './channels/channels.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { SchemaModule } from './schema/schema.module';
 
 @Module({
   imports: [
     AuthModule,
-    UsersModule,
-    TelegramModule,
-    OrdersModule,
-    ProductsModule,
-    ChannelsModule,
     OrganizationsModule,
+    SchemaModule,
+    
+    // UsersModule,
+    // TelegramModule,
+    // OrdersModule,
+    // ProductsModule,
+    // ChannelsModule,
   ],
 })
 export class ModulesModule {}

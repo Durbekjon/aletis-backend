@@ -27,6 +27,7 @@ model Organization {
   id          Int            @id @default(autoincrement())
   name        String         @default("Untitled")
   description String?
+  category    BUSINESS_CATEGORY @default(OTHER)
   bots        Bot[]
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -39,55 +40,77 @@ model Organization {
   @@map("organizations")
 }
 
+enum BUSINESS_CATEGORY {
+  FASHION
+  ELECTRONICS
+  COSMETICS
+  SERVICES
+  FOOD
+  BOOKS
+  HOME
+  SPORTS
+  AUTOMOTIVE
+  OTHER
+}
+
 model Product {
   id             Int    @id @default(autoincrement())
-  organizationId Int
   name           String
   price          Float
   images         Json
 
   schemaId     Int
-  schema       ProductSchema       @relation(fields: [schemaId], references: [id])
-  fields       ProductFieldValue[]
-  organization Organization        @relation(fields: [organizationId], references: [id])
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt()
+  schema       ProductSchema @relation(fields: [schemaId], references: [id])
+  fields       FieldValue[]
+  organizationId Int
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt()
 
   @@map("products")
 }
 
 model ProductSchema {
-  id             Int           @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
   name           String
-  fields         SchemaField[]
+  fields         Field[]
   products       Product[]
-  organizationId Int           @unique
-  organization   Organization  @relation(fields: [organizationId], references: [id])
+  organizationId Int          @unique
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
   @@map("product_schemas")
 }
 
-model SchemaField {
-  id                 Int                 @id @default(autoincrement())
-  schemaId           Int
-  schema             ProductSchema       @relation(fields: [schemaId], references: [id])
-  name               String
-  type               FieldType
-  required           Boolean
-  productFieldValues ProductFieldValue[]
+model Field {
+  id          Int           @id @default(autoincrement())
+  schemaId    Int
+  schema      ProductSchema @relation(fields: [schemaId], references: [id])
+  name        String
+  type        FieldType
+  required    Boolean
+  order       Int           @default(0)
+  fieldValues FieldValue[]
 
   @@map("schema_fields")
 }
 
-model ProductFieldValue {
-  id        Int         @id @default(autoincrement())
+model FieldValue {
+  id        String  @id @default(cuid())
   productId Int
-  fieldId   Int
-  value     String
-  product   Product     @relation(fields: [productId], references: [id])
-  field     SchemaField @relation(fields: [fieldId], references: [id])
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@map("product_field_values")
+  fieldId   Int
+  field   Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  // qiymatni universal saqlash uchun:
+  valueText   String?
+  valueNumber Float?
+  valueBool   Boolean?
+  valueDate   DateTime?
+  valueJson   Json? // ENUM, FILE, IMAGE va boshqalar uchun
+
+  @@unique([productId, fieldId]) // har bir product uchun field bir marta bo'lishi kerak
+  @@map("field_values")
 }
 
 enum FieldType {
@@ -96,6 +119,8 @@ enum FieldType {
   DATE
   FILE
   BOOLEAN
+  ENUM
+  IMAGE
 }
 
 model Member {

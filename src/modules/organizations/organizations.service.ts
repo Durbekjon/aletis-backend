@@ -94,6 +94,7 @@ export class OrganizationsService {
       data: {
         name: dto.name ?? undefined,
         description: dto.description ?? undefined,
+        category: dto.category ?? undefined,
       },
     });
   }
