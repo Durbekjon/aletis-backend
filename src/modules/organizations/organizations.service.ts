@@ -28,6 +28,7 @@ export class OrganizationsService {
       data: {
         name: dto.name,
         description: dto.description ?? null,
+        category: dto.category ?? undefined,
         members: {
           create: {
             userId,
