@@ -35,13 +35,28 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { multerConfig } from './config/multer.config';
+import { PrismaService } from '../../core/prisma/prisma.service';
 
 @ApiTags('Files')
 @ApiBearerAuth('bearer')
 @UseGuards(JwtAuthGuard)
 @Controller({ path: 'files', version: '1' })
 export class FileController {
-  constructor(private readonly fileService: FileService) {}
+  constructor(
+    private readonly fileService: FileService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  /**
+   * Get user's organization ID from database
+   */
+  private async getUserOrganizationId(userId: number): Promise<number | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { member: true },
+    });
+    return user?.member?.organizationId || null;
+  }
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', multerConfig))
@@ -87,9 +102,13 @@ export class FileController {
       throw new Error('No file provided');
     }
 
-    // Get user's organization ID (you might need to implement this logic)
-    // For now, we'll use the user ID as organization ID
-    const organizationId = Number(user.userId);
+    // Get user's organization ID from database
+    const organizationId = await this.getUserOrganizationId(
+      Number(user.userId),
+    );
+    if (!organizationId) {
+      throw new Error('User is not a member of any organization');
+    }
 
     return this.fileService.uploadFile(
       file,
@@ -145,9 +164,13 @@ export class FileController {
       throw new Error('No files provided');
     }
 
-    // Get user's organization ID (you might need to implement this logic)
-    // For now, we'll use the user ID as organization ID
-    const organizationId = Number(user.userId);
+    // Get user's organization ID from database
+    const organizationId = await this.getUserOrganizationId(
+      Number(user.userId),
+    );
+    if (!organizationId) {
+      throw new Error('User is not a member of any organization');
+    }
 
     return this.fileService.uploadManyFiles(
       files,
@@ -240,7 +263,7 @@ export class FileController {
   async deleteManyFiles(@Body() deleteFilesDto: DeleteFilesDto): Promise<void> {
     return this.fileService.deleteManyFiles(deleteFilesDto.fileIds);
   }
-  
+
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a file by ID' })

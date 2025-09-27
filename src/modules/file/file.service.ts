@@ -71,6 +71,8 @@ export class FileService {
    * Generates a unique filename to prevent conflicts
    */
   private generateUniqueFilename(originalName: string): string {
+    originalName = originalName.replace(/\s+/g, '_');
+
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 15);
     const extension = path.extname(originalName);

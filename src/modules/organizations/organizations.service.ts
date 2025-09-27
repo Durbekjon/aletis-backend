@@ -38,14 +38,6 @@ export class OrganizationsService {
         },
       },
     });
-
-    await this.prisma.member.create({
-      data: {
-        organization: { connect: { id: organization.id } },
-        user: { connect: { id: userId } },
-        status: MemberStatus.ACTIVE,
-      },
-    });
     return organization;
   }
 
