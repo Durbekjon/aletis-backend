@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { BUSINESS_CATEGORY } from '@prisma/client';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateOrganizationDto {
   @ApiProperty({ example: 'Acme Inc.' })
@@ -17,4 +18,14 @@ export class CreateOrganizationDto {
   @IsOptional()
   @MaxLength(500)
   description?: string | null;
+
+  @ApiProperty({
+    example: BUSINESS_CATEGORY.FASHION,
+    required: false,
+    nullable: true,
+    enum: BUSINESS_CATEGORY,
+  })
+  @IsEnum(BUSINESS_CATEGORY)
+  @IsOptional()
+  category?: BUSINESS_CATEGORY | null;
 }
