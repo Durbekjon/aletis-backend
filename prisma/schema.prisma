@@ -19,7 +19,7 @@ model User {
   resetToken       String?
   resetTokenExpiry DateTime?
   member           Member?
-
+  files            File[]
   @@map("users")
 }
 
@@ -36,7 +36,7 @@ model Organization {
   products    Product[]
   orders      Order[]
   schema      ProductSchema?
-
+  files       File[]
   @@map("organizations")
 }
 
@@ -57,7 +57,7 @@ model Product {
   id             Int    @id @default(autoincrement())
   name           String
   price          Float
-  images         Json
+  images         File[]
 
   schemaId     Int
   schema       ProductSchema @relation(fields: [schemaId], references: [id])
@@ -122,6 +122,43 @@ enum FieldType {
   BOOLEAN
   ENUM
   IMAGE
+}
+
+model File {
+  id             Int        @id @default(autoincrement())
+  key            String     @unique // relative path: "public/uploads/abc.png"
+  originalName   String
+  size           Int
+  mimeType       String
+  type           FileType   @default(OTHER)
+  status         FileStatus @default(READY)
+  createdAt      DateTime   @default(now())
+
+  // Relations
+  uploaderId     Int?
+  uploader       User?       @relation(fields: [uploaderId], references: [id])
+  productId      Int?
+  product        Product?    @relation(fields: [productId], references: [id])
+  organizationId Int?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([originalName])
+  @@index([organizationId, createdAt])
+  @@map("files")
+}
+
+enum FileType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  OTHER
+}
+
+enum FileStatus {
+  PENDING
+  READY
+  FAILED
 }
 
 model Member {

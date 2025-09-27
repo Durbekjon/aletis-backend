@@ -44,6 +44,8 @@ async function bootstrap() {
     type: VersioningType.URI,
     defaultVersion: '1',
   });
+
+  app.setGlobalPrefix('api');
   // Swagger (OpenAPI) setup
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Flovo API')
@@ -62,7 +64,7 @@ async function bootstrap() {
     )
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api-docs', app, document, {
+  SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
       persistAuthorization: true,
     },
@@ -73,7 +75,7 @@ async function bootstrap() {
   await app.listen(port);
 
   console.log(`🚀 Application is running on: http://localhost:${port}`);
-  console.log(`📚 Swagger docs: http://localhost:${port}/api-docs`);
+  console.log(`📚 Swagger docs: http://localhost:${port}/docs`);
   console.log(`📊 Health check: http://localhost:${port}/health`);
 }
 bootstrap();
