@@ -49,54 +49,65 @@ export class SchemaController {
   @ApiOperation({ summary: 'Create product schema for organization' })
   @ApiBody({ type: CreateSchemaDto })
   @ApiCreatedResponse({ description: 'Product schema created successfully' })
-  @ApiConflictResponse({ description: 'Organization already has a product schema' })
+  @ApiConflictResponse({
+    description: 'Organization already has a product schema',
+  })
   @ApiBadRequestResponse({ description: 'Invalid input data' })
   async createSchema(
     @CurrentUser() user: JwtPayload,
-    @Body('organizationId', ParseIntPipe) organizationId: number,
-    @Body() createSchemaDto: CreateSchemaDto
+    @Body() createSchemaDto: CreateSchemaDto,
   ) {
-    return this.schemaService.createSchema(organizationId, createSchemaDto);
+    return this.schemaService.createSchema(
+      Number(user.userId),
+      createSchemaDto,
+    );
   }
 
-  @Get(':organizationId')
+  @Get('')
   @ApiOperation({ summary: 'Get product schema by organization' })
   @ApiOkResponse({ description: 'Product schema with fields' })
-  @ApiNotFoundResponse({ description: 'Product schema not found for this organization' })
-  async getSchemaByOrganization(
-    @CurrentUser() user: JwtPayload,
-    @Param('organizationId', ParseIntPipe) organizationId: number
-  ) {
-    return this.schemaService.getSchemaByOrganization(organizationId);
+  @ApiNotFoundResponse({
+    description: 'Product schema not found for this organization',
+  })
+  async getSchemaByOrganization(@CurrentUser() user: JwtPayload) {
+    return this.schemaService.getSchemaByOrganization(Number(user.userId));
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update product schema' })
   @ApiBody({ type: UpdateSchemaDto })
   @ApiOkResponse({ description: 'Product schema updated successfully' })
-  @ApiNotFoundResponse({ description: 'Schema not found or does not belong to organization' })
+  @ApiNotFoundResponse({
+    description: 'Schema not found or does not belong to organization',
+  })
   @ApiBadRequestResponse({ description: 'Invalid input data' })
   async updateSchema(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
-    @Body('organizationId', ParseIntPipe) organizationId: number,
-    @Body() updateSchemaDto: UpdateSchemaDto
+    @Body() updateSchemaDto: UpdateSchemaDto,
   ) {
-    return this.schemaService.updateSchema(id, organizationId, updateSchemaDto);
+    return this.schemaService.updateSchema(
+      id,
+      Number(user.userId),
+      updateSchemaDto,
+    );
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete product schema' })
   @ApiNoContentResponse({ description: 'Product schema deleted successfully' })
-  @ApiNotFoundResponse({ description: 'Schema not found or does not belong to organization' })
-  @ApiConflictResponse({ description: 'Cannot delete schema that has products' })
+  @ApiNotFoundResponse({
+    description: 'Schema not found or does not belong to organization',
+  })
+  @ApiConflictResponse({
+    description: 'Cannot delete schema that has products',
+  })
   async deleteSchema(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
-    @Body('organizationId', ParseIntPipe) organizationId: number
   ) {
-    return this.schemaService.deleteSchema(id, organizationId);
+    return this.schemaService.deleteSchema(id, Number(user.userId));
   }
 
   // Field Operations
@@ -106,60 +117,83 @@ export class SchemaController {
   @ApiOperation({ summary: 'Add field to product schema' })
   @ApiBody({ type: CreateFieldDto })
   @ApiCreatedResponse({ description: 'Field added to schema successfully' })
-  @ApiNotFoundResponse({ description: 'Schema not found or does not belong to organization' })
+  @ApiNotFoundResponse({
+    description: 'Schema not found or does not belong to organization',
+  })
   @ApiBadRequestResponse({ description: 'Invalid input data' })
   async addField(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) schemaId: number,
-    @Body('organizationId', ParseIntPipe) organizationId: number,
-    @Body() createFieldDto: CreateFieldDto
+    @Body() createFieldDto: CreateFieldDto,
   ) {
-    return this.schemaService.addField(schemaId, organizationId, createFieldDto);
-  }
-
-  @Patch(':id/fields/:fieldId')
-  @ApiOperation({ summary: 'Update field in product schema' })
-  @ApiBody({ type: UpdateFieldDto })
-  @ApiOkResponse({ description: 'Field updated successfully' })
-  @ApiNotFoundResponse({ description: 'Field not found or does not belong to this schema' })
-  @ApiBadRequestResponse({ description: 'Invalid input data' })
-  async updateField(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseIntPipe) schemaId: number,
-    @Param('fieldId', ParseIntPipe) fieldId: number,
-    @Body('organizationId', ParseIntPipe) organizationId: number,
-    @Body() updateFieldDto: UpdateFieldDto
-  ) {
-    return this.schemaService.updateField(schemaId, fieldId, organizationId, updateFieldDto);
-  }
-
-  @Delete(':id/fields/:fieldId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete field from product schema' })
-  @ApiNoContentResponse({ description: 'Field deleted successfully' })
-  @ApiNotFoundResponse({ description: 'Field not found or does not belong to this schema' })
-  @ApiConflictResponse({ description: 'Cannot delete field that has values' })
-  async deleteField(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseIntPipe) schemaId: number,
-    @Param('fieldId', ParseIntPipe) fieldId: number,
-    @Body('organizationId', ParseIntPipe) organizationId: number
-  ) {
-    return this.schemaService.deleteField(schemaId, fieldId, organizationId);
+    return this.schemaService.addField(
+      schemaId,
+      Number(user.userId),
+      createFieldDto,
+    );
   }
 
   @Patch(':id/fields/reorder')
   @ApiOperation({ summary: 'Reorder fields in product schema' })
   @ApiBody({ type: ReorderFieldsDto })
   @ApiOkResponse({ description: 'Fields reordered successfully' })
-  @ApiNotFoundResponse({ description: 'Schema not found or does not belong to organization' })
-  @ApiBadRequestResponse({ description: 'Some fields do not belong to this schema' })
+  @ApiNotFoundResponse({
+    description: 'Schema not found or does not belong to organization',
+  })
+  @ApiBadRequestResponse({
+    description: 'Some fields do not belong to this schema',
+  })
   async reorderFields(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) schemaId: number,
-    @Body('organizationId', ParseIntPipe) organizationId: number,
-    @Body() reorderFieldsDto: ReorderFieldsDto
+    @Body() reorderFieldsDto: ReorderFieldsDto,
   ) {
-    return this.schemaService.reorderFields(schemaId, organizationId, reorderFieldsDto);
+    return this.schemaService.reorderFields(
+      schemaId,
+      Number(user.userId),
+      reorderFieldsDto,
+    );
+  }
+
+  @Patch(':id/fields/:fieldId')
+  @ApiOperation({ summary: 'Update field in product schema' })
+  @ApiBody({ type: UpdateFieldDto })
+  @ApiOkResponse({ description: 'Field updated successfully' })
+  @ApiNotFoundResponse({
+    description: 'Field not found or does not belong to this schema',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid input data' })
+  async updateField(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseIntPipe) schemaId: number,
+    @Param('fieldId', ParseIntPipe) fieldId: number,
+    @Body() updateFieldDto: UpdateFieldDto,
+  ) {
+    return this.schemaService.updateField(
+      schemaId,
+      fieldId,
+      Number(user.userId),
+      updateFieldDto,
+    );
+  }
+
+  @Delete(':id/fields/:fieldId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete field from product schema' })
+  @ApiNoContentResponse({ description: 'Field deleted successfully' })
+  @ApiNotFoundResponse({
+    description: 'Field not found or does not belong to this schema',
+  })
+  @ApiConflictResponse({ description: 'Cannot delete field that has values' })
+  async deleteField(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseIntPipe) schemaId: number,
+    @Param('fieldId', ParseIntPipe) fieldId: number,
+  ) {
+    return this.schemaService.deleteField(
+      schemaId,
+      fieldId,
+      Number(user.userId),
+    );
   }
 }
