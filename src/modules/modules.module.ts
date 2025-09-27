@@ -7,6 +7,7 @@ import { ChannelsModule } from './channels/channels.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { SchemaModule } from './schema/schema.module';
 import { FileModule } from './file/file.module';
+import { ProductsModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -14,11 +15,11 @@ import { FileModule } from './file/file.module';
     OrganizationsModule,
     SchemaModule,
     FileModule,
-    
+    ProductsModule,
+
     // UsersModule,
     // TelegramModule,
     // OrdersModule,
-    // ProductsModule,
     // ChannelsModule,
   ],
 })

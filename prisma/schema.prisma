@@ -67,6 +67,8 @@ model Product {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt()
 
+  @@index([name])
+  @@index([organizationId, createdAt])
   @@map("products")
 }
 
@@ -96,7 +98,7 @@ model Field {
 }
 
 model FieldValue {
-  id        String  @id @default(cuid())
+  id        Int  @id @default(autoincrement())
   productId Int
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -111,6 +113,8 @@ model FieldValue {
   valueJson   Json? // ENUM, FILE, IMAGE va boshqalar uchun
 
   @@unique([productId, fieldId]) // har bir product uchun field bir marta bo'lishi kerak
+  @@index([valueText])
+  @@index([productId])
   @@map("field_values")
 }
 
