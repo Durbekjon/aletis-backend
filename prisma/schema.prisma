@@ -89,6 +89,7 @@ model Field {
   type        FieldType
   required    Boolean
   order       Int           @default(0)
+  options     String[]      @default([]) // For ENUM field types
   fieldValues FieldValue[]
 
   @@map("schema_fields")

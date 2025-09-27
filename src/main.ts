@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { IndexModule } from './index.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
 import helmet from 'helmet';
 
 async function bootstrap() {
@@ -40,7 +40,10 @@ async function bootstrap() {
       },
     }),
   );
-
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
   // Swagger (OpenAPI) setup
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Flovo API')

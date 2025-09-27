@@ -11,10 +11,19 @@ import {
 export class SchemaService {
   constructor(private prisma: PrismaService) {}
 
-  async createSchema(organizationId: number, createSchemaDto: CreateSchemaDto) {
+  async createSchema(userId: number, createSchemaDto: CreateSchemaDto) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     // Check if organization already has a schema
     const existingSchema = await this.prisma.productSchema.findUnique({
-      where: { organizationId }
+      where: { organizationId: organization.organizationId }
     });
 
     if (existingSchema) {
@@ -26,7 +35,7 @@ export class SchemaService {
         ...createSchemaDto,
         organization: {
           connect: {
-            id:organizationId
+            id:organization.organizationId
           }
         }
       },
@@ -38,9 +47,18 @@ export class SchemaService {
     });
   }
 
-  async getSchemaByOrganization(organizationId: number) {
+  async getSchemaByOrganization(userId: number) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     const schema = await this.prisma.productSchema.findUnique({
-      where: { organizationId },
+      where: { organizationId: organization.organizationId },
       include: {
         fields: {
           orderBy: { order: 'asc' }
@@ -55,10 +73,19 @@ export class SchemaService {
     return schema;
   }
 
-  async updateSchema(schemaId: number, organizationId: number, updateSchemaDto: UpdateSchemaDto) {
+  async updateSchema(schemaId: number, userId: number, updateSchemaDto: UpdateSchemaDto) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     // Verify ownership
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId }
+      where: { id: schemaId, organizationId: organization.organizationId }
     });
 
     if (!schema) {
@@ -76,10 +103,19 @@ export class SchemaService {
     });
   }
 
-  async deleteSchema(schemaId: number, organizationId: number) {
+  async deleteSchema(schemaId: number, userId: number) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     // Verify ownership
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId },
+      where: { id: schemaId, organizationId: organization.organizationId },
       include: {
         products: true
       }
@@ -101,10 +137,19 @@ export class SchemaService {
 
   // Field Operations
 
-  async addField(schemaId: number, organizationId: number, createFieldDto: CreateFieldDto) {
+  async addField(schemaId: number, userId: number, createFieldDto: CreateFieldDto) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     // Verify schema ownership
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId }
+      where: { id: schemaId, organizationId: organization.organizationId }
     });
 
     if (!schema) {
@@ -128,14 +173,23 @@ export class SchemaService {
     });
   }
 
-  async updateField(schemaId: number, fieldId: number, organizationId: number, updateFieldDto: UpdateFieldDto) {
+  async updateField(schemaId: number, fieldId: number, userId: number, updateFieldDto: UpdateFieldDto) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     // Verify field belongs to schema and organization
     const field = await this.prisma.field.findFirst({
       where: {
         id: fieldId,
         schema: {
           id: schemaId,
-          organizationId
+          organizationId: organization.organizationId
         }
       }
     });
@@ -150,14 +204,23 @@ export class SchemaService {
     });
   }
 
-  async deleteField(schemaId: number, fieldId: number, organizationId: number) {
+  async deleteField(schemaId: number, fieldId: number, userId: number) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     // Verify field belongs to schema and organization
     const field = await this.prisma.field.findFirst({
       where: {
         id: fieldId,
         schema: {
           id: schemaId,
-          organizationId
+          organizationId: organization.organizationId
         }
       },
       include: {
@@ -179,10 +242,19 @@ export class SchemaService {
     });
   }
 
-  async reorderFields(schemaId: number, organizationId: number, reorderFieldsDto: ReorderFieldsDto) {
+    async reorderFields(schemaId: number, userId: number, reorderFieldsDto: ReorderFieldsDto) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     // Verify schema ownership
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId }
+      where: { id: schemaId, organizationId: organization.organizationId }
     });
 
     if (!schema) {
@@ -214,9 +286,18 @@ export class SchemaService {
   }
 
   // Helper method to get schema with fields ordered
-  async getSchemaWithFields(schemaId: number, organizationId: number) {
+  async getSchemaWithFields(schemaId: number, userId: number) {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId },
+      where: { id: schemaId, organizationId: organization.organizationId },
       include: {
         fields: {
           orderBy: { order: 'asc' }
