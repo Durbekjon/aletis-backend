@@ -202,6 +202,8 @@ model Bot {
   organization   Organization   @relation(fields: [organizationId], references: [id])
   conversations  Conversation[]
 
+  @@index([organizationId, name])
+  @@index([organizationId, username])
   @@map("bots")
 }
 
