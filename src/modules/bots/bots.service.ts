@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@core/prisma/prisma.service';
-import { Bot, MemberRole } from '@prisma/client';
+import { Bot, MemberRole, Organization, Prisma } from '@prisma/client';
 import { CreateBotDto } from './dto/create-bot.dto';
 import { UpdateBotDto } from './dto/update-bot.dto';
 import { EncryptionService } from '@core/encryption/encryption.service';
@@ -55,14 +55,34 @@ export class BotsService {
     paginationDto: PaginationDto,
   ): Promise<PaginatedResponseDto<Bot>> {
     const organization = await this.validateUser(userId);
+    const searchFilter = paginationDto.search
+      ? {
+          OR: [
+            {
+              name: {
+                contains: paginationDto.search,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+            {
+              username: {
+                contains: paginationDto.search,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+          ],
+        }
+      : {};
     const [bots, total] = await this.prisma.$transaction([
       this.prisma.bot.findMany({
-        where: { organizationId: organization.id },
+        where: { organizationId: organization.id, ...searchFilter },
         skip: paginationDto.skip,
         take: paginationDto.take,
         orderBy: { createdAt: paginationDto.order },
       }),
-      this.prisma.bot.count({ where: { organizationId: organization.id } }),
+      this.prisma.bot.count({
+        where: { organizationId: organization.id, ...searchFilter },
+      }),
     ]);
     return new PaginatedResponseDto<Bot>(
       bots,
@@ -135,7 +155,11 @@ export class BotsService {
       throw new NotFoundException('Bot not found');
     }
     const decryptedToken = this.encryption.decrypt(bot.token);
-    const result = await this.webhook.setWebhook(decryptedToken);
+    const result = await this.webhook.setWebhook(
+      decryptedToken,
+      botId,
+      organization.id,
+    );
     if (result.isOK) {
       await this.prisma.bot.update({
         where: { id: botId },
@@ -184,7 +208,7 @@ export class BotsService {
     return tokenPattern.test(token);
   }
 
-  private async validateUser(userId: number) {
+  private async validateUser(userId: number): Promise<Organization> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {

@@ -12,7 +12,7 @@ export class TelegramUserDto {
 
   @IsOptional()
   @IsString()
-  first_name?: string;
+  first_name: string;
 
   @IsOptional()
   @IsString()

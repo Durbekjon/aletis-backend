@@ -13,11 +13,11 @@ export class WebhookService {
     private readonly logger: Logger,
   ) {}
 
-  async getWebhookUrl(): Promise<string> {
+  async getWebhookUrl(botId: number, organizationId: number): Promise<string> {
     // Get webhook URL from environment or construct from allowed origins
     const webhookUrl = this.configService.get<string>('WEBHOOK_URL');
     if (webhookUrl) {
-      return `${webhookUrl}/api/v1/telegram/webhook`;
+      return `${webhookUrl}/api/v1/telegram/webhook/${botId}/${organizationId}`;
     }
 
     throw new Error(
@@ -25,9 +25,13 @@ export class WebhookService {
     );
   }
 
-  async setWebhook(botToken: string): Promise<webhookResponse> {
+  async setWebhook(
+    botToken: string,
+    botId: number,
+    organizationId: number,
+  ): Promise<webhookResponse> {
     const baseUrl = `https://api.telegram.org/bot${botToken}`;
-    const webhookUrl = await this.getWebhookUrl();
+    const webhookUrl = await this.getWebhookUrl(botId, organizationId);
     const setWebhookUrl = `${baseUrl}/setWebhook`;
 
     this.logger.log(`Setting webhook to: ${webhookUrl}`);

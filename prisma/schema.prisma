@@ -20,23 +20,26 @@ model User {
   resetTokenExpiry DateTime?
   member           Member?
   files            File[]
+
   @@map("users")
 }
 
 model Organization {
-  id          Int            @id @default(autoincrement())
-  name        String         @default("Untitled")
+  id          Int               @id @default(autoincrement())
+  name        String            @default("Untitled")
   description String?
   category    BUSINESS_CATEGORY @default(OTHER)
   bots        Bot[]
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   channels    Channel[]
   members     Member[]
   products    Product[]
   orders      Order[]
   schema      ProductSchema?
   files       File[]
+  customers   Customer[]
+
   @@map("organizations")
 }
 
@@ -54,18 +57,18 @@ enum BUSINESS_CATEGORY {
 }
 
 model Product {
-  id             Int    @id @default(autoincrement())
-  name           String
-  price          Float
-  images         File[]
+  id     Int    @id @default(autoincrement())
+  name   String
+  price  Float
+  images File[]
 
-  schemaId     Int
-  schema       ProductSchema @relation(fields: [schemaId], references: [id])
-  fields       FieldValue[]
+  schemaId       Int
+  schema         ProductSchema @relation(fields: [schemaId], references: [id])
+  fields         FieldValue[]
   organizationId Int
-  organization Organization  @relation(fields: [organizationId], references: [id])
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt()
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt()
 
   @@index([name])
   @@index([organizationId, createdAt])
@@ -98,11 +101,11 @@ model Field {
 }
 
 model FieldValue {
-  id        Int  @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   productId Int
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  fieldId   Int
+  fieldId Int
   field   Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
   // qiymatni universal saqlash uchun:
@@ -129,20 +132,20 @@ enum FieldType {
 }
 
 model File {
-  id             Int        @id @default(autoincrement())
-  key            String     @unique // relative path: "public/uploads/abc.png"
-  originalName   String
-  size           Int
-  mimeType       String
-  type           FileType   @default(OTHER)
-  status         FileStatus @default(READY)
-  createdAt      DateTime   @default(now())
+  id           Int        @id @default(autoincrement())
+  key          String     @unique // relative path: "public/uploads/abc.png"
+  originalName String
+  size         Int
+  mimeType     String
+  type         FileType   @default(OTHER)
+  status       FileStatus @default(READY)
+  createdAt    DateTime   @default(now())
 
   // Relations
   uploaderId     Int?
-  uploader       User?       @relation(fields: [uploaderId], references: [id])
+  uploader       User?         @relation(fields: [uploaderId], references: [id])
   productId      Int?
-  product        Product?    @relation(fields: [productId], references: [id])
+  product        Product?      @relation(fields: [productId], references: [id])
   organizationId Int?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
@@ -200,49 +203,44 @@ model Bot {
   username       String
   organizationId Int
   organization   Organization   @relation(fields: [organizationId], references: [id])
-  conversations  Conversation[]
+  customers  Customer[]
 
   @@index([organizationId, name])
   @@index([organizationId, username])
   @@map("bots")
 }
 
-model Conversation {
-  id        String    @id @unique
-  createdAt DateTime  @default(now())
-  botId     Int
-  bot       Bot       @relation(fields: [botId], references: [id])
-  messages  Message[]
+model Customer {
+  id             Int          @id @default(autoincrement())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  telegramId     String
+  name           String
+  username       String?
+  organizationId Int
+  messages       Message[]
+  botId          Int
+  bot            Bot          @relation(fields: [botId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
-  @@map("conversations")
+  @@unique([telegramId, organizationId, botId])
+  @@index([telegramId])
+  @@index([organizationId, createdAt])
+  @@index([username])
+  @@index([name])
+  @@map("customers")
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  createdAt      DateTime     @default(now())
-  sender         SenderType
-  content        String
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  id         String     @id @default(cuid())
+  createdAt  DateTime   @default(now())
+  sender     SenderType
+  content    String
+  customerId Int
+  customer   Customer   @relation(fields: [customerId], references: [id])
 
   @@map("messages")
 }
-
-// model Product {
-//   id             Int      @id @default(autoincrement())
-//   organizationId Int
-//   name           String
-//   description    String?
-//   price          Decimal? @db.Decimal(10, 2)
-//   stock          Int      @default(0)
-//   isActive       Boolean  @default(true)
-//   createdAt      DateTime @default(now())
-//   updatedAt      DateTime @updatedAt
-
-//   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-//   @@map("products")
-// }
 
 model Order {
   id              Int          @id @default(autoincrement())

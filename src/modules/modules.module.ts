@@ -9,6 +9,7 @@ import { SchemaModule } from '@schema/schema.module';
 import { FileModule } from '@file/file.module';
 import { ProductsModule } from '@products/products.module';
 import { BotsModule } from '@bots/bots.module';
+import { CustomersModule } from './customers/customers.module';
 
 @Module({
   imports: [
@@ -18,9 +19,11 @@ import { BotsModule } from '@bots/bots.module';
     FileModule,
     ProductsModule,
     BotsModule,
+    CustomersModule,
 
     // UsersModule,
     TelegramModule,
+
     // OrdersModule,
     // ChannelsModule,
   ],

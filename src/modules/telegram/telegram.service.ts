@@ -1,14 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { EncryptionService } from '../../core/encryption/encryption.service';
-import { GeminiService } from '../../core/gemini/gemini.service';
 import { RetryService } from '../../core/retry/retry.service';
-import { OrdersService } from '../orders/orders.service';
-import { ProductsService } from '../products/products.service';
-import { ChannelsService } from '../channels/channels.service';
 import { TelegramWebhookDto } from './dto/telegram-webhook.dto';
-import type { Bot, Conversation, Message } from '@prisma/client';
+import { CustomersService } from '../customers/customers.service';
 
 @Injectable()
 export class TelegramService {
@@ -18,15 +13,20 @@ export class TelegramService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
+    private readonly customersService: CustomersService,
+    private readonly retryService: RetryService,
     // private readonly configService: ConfigService,
     // private readonly geminiService: GeminiService,
-    private readonly retryService: RetryService,
-    private readonly ordersService: OrdersService,
+    // private readonly ordersService: OrdersService,
     // private readonly productsService: ProductsService,
-    private readonly channelsService: ChannelsService,
+    // private readonly channelsService: ChannelsService,
   ) {}
 
-  async processUpdate(webhookData: TelegramWebhookDto): Promise<void> {
+  async processUpdate(
+    webhookData: TelegramWebhookDto,
+    botId: number,
+    organizationId: number,
+  ): Promise<void> {
     this.logger.log(`Processing update: ${webhookData.update_id}`);
 
     // Check for duplicate updates (idempotency)
@@ -36,12 +36,43 @@ export class TelegramService {
       );
       return;
     }
-    if (webhookData.message)
+    //     {
+    //   webhookData: TelegramWebhookDto {
+    //     update_id: 430696138,
+    //     message: TelegramMessageDto {
+    //       message_id: 62,
+    //       from: [TelegramUserDto],
+    //       chat: [TelegramChatDto],
+    //       date: 1759261038,
+    //       text: 'nima gap qildirbosh'
+    //     }
+    //   }
+    // }
+
+    if (webhookData.message) {
+      const client = webhookData.message?.from;
+      const customer = await this.customersService.getCustomerByTelegramId(
+        client.id.toString(),
+        organizationId,
+        botId,
+      );
+      if (!customer) {
+        let newCustomerName = client.first_name;
+        if (client.last_name) newCustomerName += ` ${client.last_name}`;
+        await this.customersService.createCustomer({
+          telegramId: client.id.toString(),
+          organizationId,
+          botId,
+          name: newCustomerName,
+          username: client.username || null,
+        });
+      }
+
       return this.sendTelegramReply(
         webhookData.message?.chat.id.toString(),
         'Bu flovo tizimiga ulangan bot',
       );
-
+    }
     return;
     // Mark update as being processed
     // this.processedUpdates.add(webhookData.update_id);
