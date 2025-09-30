@@ -5,6 +5,7 @@ import { CreateBotDto } from './dto/create-bot.dto';
 import { UpdateBotDto } from './dto/update-bot.dto';
 import { EncryptionService } from '@core/encryption/encryption.service';
 import { webhookResponse, WebhookService } from '@core/webhook/webhook.service';
+import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
 export interface TelegramBotInfo {
   id: string;
   is_bot: boolean;
@@ -30,12 +31,11 @@ export class BotsService {
    * @param dto - The data for the bot
    * @returns The created bot
    */
-  async createBot(userId: number, dto: CreateBotDto): Promise<Bot | void> {
+  async createBot(userId: number, dto: CreateBotDto): Promise<Bot> {
     const organization = await this.validateUser(userId);
     const { id, first_name, username } = await this.validateBotByTelegramAPI(
       dto.token,
     );
-    console.log(id,first_name,username)
     const encryptedToken = this.encryption.encrypt(dto.token);
     const bot = await this.prisma.bot.create({
       data: {
@@ -50,12 +50,26 @@ export class BotsService {
     return bot;
   }
 
-  async getBots(userId: number): Promise<Bot[]> {
+  async getBots(
+    userId: number,
+    paginationDto: PaginationDto,
+  ): Promise<PaginatedResponseDto<Bot>> {
     const organization = await this.validateUser(userId);
-    const bots = await this.prisma.bot.findMany({
-      where: { organizationId: organization.id },
-    });
-    return bots;
+    const [bots, total] = await this.prisma.$transaction([
+      this.prisma.bot.findMany({
+        where: { organizationId: organization.id },
+        skip: paginationDto.skip,
+        take: paginationDto.take,
+        orderBy: { createdAt: paginationDto.order },
+      }),
+      this.prisma.bot.count({ where: { organizationId: organization.id } }),
+    ]);
+    return new PaginatedResponseDto<Bot>(
+      bots,
+      total,
+      paginationDto.page ?? 1,
+      paginationDto.limit ?? 20,
+    );
   }
 
   async getBotDetails(userId: number, botId: number): Promise<Bot> {
@@ -120,9 +134,12 @@ export class BotsService {
     const decryptedToken = this.encryption.decrypt(bot.token);
     const result = await this.webhook.setWebhook(decryptedToken);
     if (result.isOK) {
-      await this.prisma.bot.update({ where: { id: botId }, data:{isEnabled:true} })
+      await this.prisma.bot.update({
+        where: { id: botId },
+        data: { isEnabled: true },
+      });
     }
-    return result
+    return result;
   }
 
   async stopBot(userId: number, botId: number): Promise<webhookResponse> {

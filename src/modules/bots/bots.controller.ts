@@ -7,12 +7,14 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { BotsService } from './bots.service';
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -23,6 +25,8 @@ import { Bot } from '@prisma/client';
 import { webhookResponse } from '@core/webhook/webhook.service';
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
+import { PaginationDto } from '@/shared/dto';
+import { BotPaginatedResponseDto } from './dto/bot-pagination.dto';
 
 @ApiTags('Telegram Bots')
 @ApiBearerAuth('bearer')
@@ -41,15 +45,53 @@ export class BotsController {
   async createBot(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateBotDto,
-  ): Promise<Bot | void> {
+  ): Promise<Bot> {
     return this.botsService.createBot(Number(user.userId), dto);
   }
 
   @Get()
+  @ApiQuery({
+    name: 'page',
+    description: 'Page number (1-based)',
+    required: false,
+    type: Number,
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'limit',
+    description: 'Number of items per page (max 100)',
+    required: false,
+    type: Number,
+    example: 20,
+  })
+  @ApiQuery({
+    name: 'search',
+    description: 'Search term for filtering by product name or field values',
+    required: false,
+    type: String,
+    example: 'laptop',
+  })
+  @ApiQuery({
+    name: 'order',
+    description: 'Sort order by creation date',
+    required: false,
+    enum: ['asc', 'desc'],
+    example: 'desc',
+  })
   @ApiOperation({ summary: 'Get all bots for current user organization' })
-  @ApiResponse({ status: 200, description: 'List of bots', type: [Object] })
-  async getBots(@CurrentUser() user: JwtPayload): Promise<Bot[]> {
-    return this.botsService.getBots(Number(user.userId));
+  @ApiResponse({
+    status: 200,
+    description: 'List of bots',
+    type: BotPaginatedResponseDto,
+  })
+  async getBots(
+    @CurrentUser() user: JwtPayload,
+    @Query() paginationDto: PaginationDto,
+  ): Promise<BotPaginatedResponseDto> {
+    return this.botsService.getBots(
+      Number(user.userId),
+      paginationDto,
+    ) as unknown as BotPaginatedResponseDto;
   }
 
   @Get(':id')

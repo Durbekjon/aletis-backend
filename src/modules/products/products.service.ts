@@ -189,7 +189,6 @@ export class ProductsService {
       if (createProductDto.images && createProductDto.images.length > 0) {
         await this.validateFileOwnership(createProductDto.images, organizationId);
       }
-      console.log({b:createProductDto.fields})
       // Validate field values
       const fieldMap = new Map(schema.fields.map(field => [field.id, field]));
       for (const fieldValue of createProductDto.fields) {

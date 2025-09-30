@@ -41,14 +41,14 @@ export class OrganizationsController {
   @Get()
   @ApiOperation({ summary: 'Get organization of current user' })
   @ApiOkResponse({ description: 'organization of current user' })
-  list(@CurrentUser() user: JwtPayload) {
+  getMyOrganization(@CurrentUser() user: JwtPayload) {
     return this.service.getMyOrganization(Number(user.userId));
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get organization details' })
   @ApiOkResponse({ description: 'Organization with relations' })
-  getOne(
+  getOrganizationById(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
   ) {
@@ -70,7 +70,7 @@ export class OrganizationsController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete organization (admin only)' })
   @ApiOkResponse({ description: 'Deleted organization' })
-  remove(
+  deleteOrganization(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
   ) {

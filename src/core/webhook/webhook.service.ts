@@ -39,7 +39,6 @@ export class WebhookService {
     });
 
     const result = await response.json();
-    console.log({result})
     if (!response.ok || !result.ok) {
       return {
         isOK: false,
@@ -49,7 +48,7 @@ export class WebhookService {
 
     return {
       isOK: true,
-      message: 'Webhook set successfully',
+      message: result.description,
     };
   }
 
@@ -72,7 +71,7 @@ export class WebhookService {
     } else {
       return {
         isOK: true,
-        message: 'Webhook removed successfully',
+        message: result.description,
       };
     }
   }

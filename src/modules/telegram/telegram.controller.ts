@@ -1,8 +1,10 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { TelegramService } from './telegram.service';
 import { TelegramWebhookDto } from './dto/telegram-webhook.dto';
+import { ApiExcludeController } from '@nestjs/swagger';
 
-@Controller('telegram')
+@ApiExcludeController()
+@Controller({path: 'telegram', version: '1'})
 export class TelegramController {
   constructor(private readonly telegramService: TelegramService) {}
 

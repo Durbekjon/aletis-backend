@@ -434,7 +434,6 @@ export class TelegramService {
 
       // Decrypt the bot token
       const botToken = this.encryption.decrypt(bot.token);
-      console.log(botToken);
       // Send message via Telegram Bot API
       await this.retryService.executeWithRetry(
         async () => {
