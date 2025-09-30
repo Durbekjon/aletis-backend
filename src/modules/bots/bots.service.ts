@@ -96,6 +96,9 @@ export class BotsService {
       throw new NotFoundException('Bot not found');
     }
 
+    const decryptedToken = this.encryption.decrypt(bot.token);
+    await this.webhook.deleteWebhook(decryptedToken);
+
     const { id, first_name, username } = await this.validateBotByTelegramAPI(
       dto.token,
     );
