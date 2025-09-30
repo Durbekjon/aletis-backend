@@ -195,7 +195,7 @@ model Bot {
   updatedAt      DateTime       @updatedAt
   token          String         @unique
   isEnabled      Boolean        @default(true)
-  telegramId     BigInt
+  telegramId     String
   name           String
   username       String
   organizationId Int

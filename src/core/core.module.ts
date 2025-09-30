@@ -6,9 +6,10 @@ import { GeminiService } from './gemini/gemini.service';
 import { RetryService } from './retry/retry.service';
 import { SecurityModule } from './security/security.module';
 import { LoggingModule } from './logging/logging.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
-  imports: [PrismaModule, SecurityModule, LoggingModule],
+  imports: [PrismaModule, SecurityModule, LoggingModule, WebhookModule],
   controllers: [HealthController],
   providers: [EncryptionService, GeminiService, RetryService],
   exports: [PrismaModule, EncryptionService, GeminiService, RetryService],

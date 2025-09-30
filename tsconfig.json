@@ -17,7 +17,16 @@
     "paths": {
       "@modules/*": ["./src/modules/*"],
       "@auth/*": ["./src/modules/auth/*"],
+      "@guards/*": ["./src/modules/auth/guards/*"],
       "@organizations/*": ["./src/modules/organizations/*"],
+      "@users/*": ["./src/modules/users/*"],
+      "@telegram/*": ["./src/modules/telegram/*"],
+      "@orders/*": ["./src/modules/orders/*"],
+      "@channels/*": ["./src/modules/channels/*"],
+      "@products/*": ["./src/modules/products/*"],
+      "@bots/*": ["./src/modules/bots/*"],
+      "@schema/*": ["./src/modules/schema/*"],
+      "@file/*": ["./src/modules/file/*"],
       "@core/*": ["./src/core/*"],
       "@prisma/*": ["./src/core/prisma/*"],
       "@/*": ["./src/*"]

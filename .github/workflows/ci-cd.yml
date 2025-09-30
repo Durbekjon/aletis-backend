@@ -104,7 +104,7 @@ jobs:
               -e ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
               -e TELEGRAM_BOT_TOKEN=8310173173:AAHNgz0I-Nzy6qBiHtRRi-f_r-JMS7eYCBY \
               -e GEMINI_API_KEY=AIzaSyAWMp2evO2eT2iatC4lh--LQYwkFJz9CZE \
-              -e WEBHOOK_URL=https://05d7a762bc51457f7f698429fec0a573.serveo.net \
+              -e WEBHOOK_URL=https://6faef460a4ee.ngrok-free.app \
               -e ALLOWED_ORIGINS=http://localhost:3000 \
               -e ENABLE_THROTTLING=false \
               -e MAX_MESSAGE_AGE_MINUTES=5 \
