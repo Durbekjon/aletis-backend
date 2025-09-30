@@ -10,9 +10,10 @@ import { OrdersModule } from '../orders/orders.module';
 import { ProductsModule } from '../products/products.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { CacheService } from '@core/cache/cache.service';
+import { CustomersModule } from '../customers/customers.module';
 
 @Module({
-  imports: [CoreModule, OrdersModule, ProductsModule, ChannelsModule],
+  imports: [CoreModule, OrdersModule, ProductsModule, ChannelsModule, CustomersModule],
   controllers: [TelegramController],
   providers: [TelegramService, EncryptionService,RetryService,OrdersService,ChannelsService, CacheService],
   exports: [TelegramService],
