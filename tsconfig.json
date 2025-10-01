@@ -29,6 +29,8 @@
       "@file/*": ["./src/modules/file/*"],
       "@core/*": ["./src/core/*"],
       "@prisma/*": ["./src/core/prisma/*"],
+      "@webhook/*": ["./src/modules/webhook/*"],
+      "@customers/*": ["./src/modules/customers/*"],
       "@/*": ["./src/*"]
     },
     "incremental": true,

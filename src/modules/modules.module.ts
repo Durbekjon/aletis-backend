@@ -9,7 +9,9 @@ import { SchemaModule } from '@schema/schema.module';
 import { FileModule } from '@file/file.module';
 import { ProductsModule } from '@products/products.module';
 import { BotsModule } from '@bots/bots.module';
-import { CustomersModule } from './customers/customers.module';
+import { CustomersModule } from '@customers/customers.module';
+import { WebhookModule } from '@webhook/webhook.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -23,6 +25,10 @@ import { CustomersModule } from './customers/customers.module';
 
     // UsersModule,
     TelegramModule,
+
+    WebhookModule,
+
+    MessagesModule,
 
     // OrdersModule,
     // ChannelsModule,

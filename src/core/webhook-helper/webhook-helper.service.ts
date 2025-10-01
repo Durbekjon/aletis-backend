@@ -7,7 +7,7 @@ export interface webhookResponse {
 }
 
 @Injectable()
-export class WebhookService {
+export class WebhookHelperService {
   constructor(
     private readonly configService: ConfigService,
     private readonly logger: Logger,
@@ -17,7 +17,7 @@ export class WebhookService {
     // Get webhook URL from environment or construct from allowed origins
     const webhookUrl = this.configService.get<string>('WEBHOOK_URL');
     if (webhookUrl) {
-      return `${webhookUrl}/api/v1/telegram/webhook/${botId}/${organizationId}`;
+      return `${webhookUrl}/api/v1/webhook/${botId}/${organizationId}`;
     }
 
     throw new Error(
