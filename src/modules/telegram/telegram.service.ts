@@ -2,8 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { EncryptionService } from '../../core/encryption/encryption.service';
 import { RetryService } from '../../core/retry/retry.service';
-import { TelegramWebhookDto } from './dto/telegram-webhook.dto';
+import { TelegramWebhookDto } from './dto/telegram.dto';
 import { CustomersService } from '../customers/customers.service';
+import { ConfigService } from '@nestjs/config';
+import { BotsService } from '@modules/bots/bots.service';
+import { Bot, Message } from '@prisma/client';
+import { GeminiService } from '@core/gemini/gemini.service';
+import { ProductsService } from '../products/products.service';
 
 @Injectable()
 export class TelegramService {
@@ -15,8 +20,10 @@ export class TelegramService {
     private readonly encryption: EncryptionService,
     private readonly customersService: CustomersService,
     private readonly retryService: RetryService,
-    // private readonly configService: ConfigService,
-    // private readonly geminiService: GeminiService,
+    private readonly configService: ConfigService,
+    private readonly botService: BotsService,
+    private readonly geminiService: GeminiService,
+    private readonly productsService: ProductsService,
     // private readonly ordersService: OrdersService,
     // private readonly productsService: ProductsService,
     // private readonly channelsService: ChannelsService,
@@ -36,63 +43,46 @@ export class TelegramService {
       );
       return;
     }
-    //     {
-    //   webhookData: TelegramWebhookDto {
-    //     update_id: 430696138,
-    //     message: TelegramMessageDto {
-    //       message_id: 62,
-    //       from: [TelegramUserDto],
-    //       chat: [TelegramChatDto],
-    //       date: 1759261038,
-    //       text: 'nima gap qildirbosh'
-    //     }
-    //   }
-    // }
 
-    if (webhookData.message) {
-      const client = webhookData.message?.from;
-      const customer = await this.customersService.getCustomerByTelegramId(
-        client.id.toString(),
+    if (!webhookData.message) {
+      return;
+    }
+    const client = webhookData.message?.from;
+    let customer = await this.customersService.getCustomerByTelegramId(
+      client.id.toString(),
+      organizationId,
+      botId,
+    );
+    if (!customer) {
+      let newCustomerName = client.first_name;
+      if (client.last_name) newCustomerName += ` ${client.last_name}`;
+      customer = await this.customersService.createCustomer({
+        telegramId: client.id.toString(),
         organizationId,
         botId,
-      );
-      if (!customer) {
-        let newCustomerName = client.first_name;
-        if (client.last_name) newCustomerName += ` ${client.last_name}`;
-        await this.customersService.createCustomer({
-          telegramId: client.id.toString(),
-          organizationId,
-          botId,
-          name: newCustomerName,
-          username: client.username || null,
-        });
-      }
-
-      return this.sendTelegramReply(
-        webhookData.message?.chat.id.toString(),
-        'Bu flovo tizimiga ulangan bot',
-      );
+        name: newCustomerName,
+        username: client.username || null,
+      });
     }
-    return;
     // Mark update as being processed
-    // this.processedUpdates.add(webhookData.update_id);
+    this.processedUpdates.add(webhookData.update_id);
 
     // // Clean up old update IDs to prevent memory leak (keep last 1000)
-    // if (this.processedUpdates.size > 1000) {
-    //   const sortedIds = Array.from(this.processedUpdates).sort((a, b) => a - b);
-    //   const toDelete = sortedIds.slice(0, sortedIds.length - 1000);
-    //   toDelete.forEach((id) => this.processedUpdates.delete(id));
-    // }
+    if (this.processedUpdates.size > 1000) {
+      const sortedIds = Array.from(this.processedUpdates).sort((a, b) => a - b);
+      const toDelete = sortedIds.slice(0, sortedIds.length - 1000);
+      toDelete.forEach((id) => this.processedUpdates.delete(id));
+    }
 
     // // Only handle text messages for now
-    // if (!webhookData.message?.text) {
-    //   this.logger.log('Ignoring non-text message');
-    //   return;
-    // }
+    if (!webhookData.message?.text) {
+      this.logger.log('Ignoring non-text message');
+      return;
+    }
 
-    // const message = webhookData.message;
-    // const chatId = message.chat.id.toString();
-    // const userText = message.text;
+    const message = webhookData.message;
+    const chatId = message.chat.id.toString();
+    const userText = message.text;
 
     // // Check for channel connection command
     // if (userText === '/connect_flovo') {
@@ -100,71 +90,54 @@ export class TelegramService {
     //   return;
     // }
 
-    // try {
-    //   // Step 1: Identify bot (for now, we'll use a simple approach)
-    //   // In production, we'd need to identify which bot this webhook belongs to
-    //   const bot = await this.findBotForChat(chatId);
-    //   if (!bot) {
-    //     this.logger.warn(`No bot found for chat ${chatId}`);
-    //     return;
-    //   }
+    try {
+      const bot = await this.botService._getBot(botId, organizationId);
+      if (!bot) return;
+      // Step 1.5: Check message timestamp to avoid processing old messages
+      const messageDate = new Date(message.date * 1000); // Telegram sends Unix timestamp
+      const currentTime = new Date();
+      const timeDifference = currentTime.getTime() - messageDate.getTime();
+      const maxAgeMinutes =
+        this.configService.get<number>('MAX_MESSAGE_AGE_MINUTES') || 5; // Configurable, default 5 minutes
 
-    //   // Check if bot is enabled
-    //   if (!bot.isEnabled) {
-    //     this.logger.log(
-    //       `Bot ${bot.id} is disabled, ignoring message from chat ${chatId}`,
-    //     );
-    //     return;
-    //   }
+      if (timeDifference > maxAgeMinutes * 60 * 1000) {
+        this.logger.log(
+          `Ignoring old message from chat ${chatId}. Message age: ${Math.round(timeDifference / 1000 / 60)} minutes (max: ${maxAgeMinutes} minutes)`,
+        );
+        return;
+      }
 
-    //   // Step 1.5: Check message timestamp to avoid processing old messages
-    //   const messageDate = new Date(message.date * 1000); // Telegram sends Unix timestamp
-    //   const currentTime = new Date();
-    //   const timeDifference = currentTime.getTime() - messageDate.getTime();
-    //   const maxAgeMinutes =
-    //     this.configService.get<number>('MAX_MESSAGE_AGE_MINUTES') || 5; // Configurable, default 5 minutes
+      // Additional check: Only process messages that arrived after the bot was last enabled
+      // This prevents processing messages that arrived while the bot was disabled
+      if (bot.updatedAt && messageDate < bot.updatedAt) {
+        this.logger.log(
+          `Ignoring message from chat ${chatId} that arrived before bot was enabled. Message: ${messageDate.toISOString()}, Bot enabled: ${bot.updatedAt.toISOString()}`,
+        );
+        return;
+      }
 
-    //   if (timeDifference > maxAgeMinutes * 60 * 1000) {
-    //     this.logger.log(
-    //       `Ignoring old message from chat ${chatId}. Message age: ${Math.round(timeDifference / 1000 / 60)} minutes (max: ${maxAgeMinutes} minutes)`,
-    //     );
-    //     return;
-    //   }
+      // Step 3: Save user message
+      await this.saveMessage(customer.id, userText || '', 'USER');
 
-    //   // Additional check: Only process messages that arrived after the bot was last enabled
-    //   // This prevents processing messages that arrived while the bot was disabled
-    //   if (bot.updatedAt && messageDate < bot.updatedAt) {
-    //     this.logger.log(
-    //       `Ignoring message from chat ${chatId} that arrived before bot was enabled. Message: ${messageDate.toISOString()}, Bot enabled: ${bot.updatedAt.toISOString()}`,
-    //     );
-    //     return;
-    //   }
+      // Step 4: Get conversation history (last 10 messages)
+      const history = await this.getConversationHistory(customer.id, 10);
 
-    //   // Step 2: Ensure conversation exists
-    //   const conversation = await this.ensureConversation(chatId, bot.id);
+      // Step 5: Process with AI and handle intents
+      const aiResponse = await this.processWithAI(userText || '', history, bot);
 
-    //   // Step 3: Save user message
-    //   await this.saveMessage(conversation.id, userText || '', 'USER');
+      // Step 6: Save bot response
+      await this.saveMessage(customer.id, aiResponse, 'BOT');
 
-    //   // Step 4: Get conversation history (last 10 messages)
-    //   const history = await this.getConversationHistory(conversation.id, 10);
+      // Step 7: Send reply via Telegram (placeholder for now)
+      await this.sendTelegramReply(chatId, aiResponse);
 
-    //   // Step 5: Process with AI and handle intents
-    //   const aiResponse = await this.processWithAI(userText || '', history, bot);
-
-    //   // Step 6: Save bot response
-    //   await this.saveMessage(conversation.id, aiResponse, 'BOT');
-
-    //   // Step 7: Send reply via Telegram (placeholder for now)
-    //   await this.sendTelegramReply(chatId, aiResponse);
-
-    //   this.logger.log(`Successfully processed message from chat ${chatId}`);
-    // } catch (error) {
-    //   this.logger.error(
-    //     `Error processing update: ${error.message}`,
-    //     error.stack,
-    //   );
-    // }
+      this.logger.log(`Successfully processed message from chat ${chatId}`);
+    } catch (error) {
+      this.logger.error(
+        `Error processing update: ${error.message}`,
+        error.stack,
+      );
+    }
   }
 
   // private async findBotForChat(chatId: string): Promise<Bot | null> {
@@ -175,81 +148,67 @@ export class TelegramService {
   //   });
   // }
 
-  // private async ensureConversation(
-  //   chatId: string,
-  //   botId: number,
-  // ): Promise<Conversation> {
-  //   return this.prisma.conversation.upsert({
-  //     where: { id: chatId },
-  //     update: {},
-  //     create: {
-  //       id: chatId,
-  //       botId,
-  //     },
-  //   });
-  // }
+  private async saveMessage(
+    customerId: number,
+    content: string,
+    sender: 'USER' | 'BOT',
+  ): Promise<Message> {
+    return this.prisma.message.create({
+      data: {
+        customerId,
+        content,
+        sender,
+      },
+    });
+  }
 
-  // private async saveMessage(
-  //   conversationId: string,
-  //   content: string,
-  //   sender: 'USER' | 'BOT',
-  // ): Promise<Message> {
-  //   return this.prisma.message.create({
-  //     data: {
-  //       conversationId,
-  //       content,
-  //       sender,
-  //     },
-  //   });
-  // }
+  private async getConversationHistory(
+    customerId: number,
+    limit: number = 10,
+  ): Promise<Message[]> {
+    return this.prisma.message.findMany({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+  }
 
-  // private async getConversationHistory(
-  //   conversationId: string,
-  //   limit: number = 10,
-  // ): Promise<Message[]> {
-  //   return this.prisma.message.findMany({
-  //     where: { conversationId },
-  //     orderBy: { createdAt: 'desc' },
-  //     take: limit,
-  //   });
-  // }
+  private async processWithAI(
+    userText: string,
+    history: Message[],
+    bot: Bot,
+  ): Promise<string> {
+    this.logger.log(`Processing AI request for: "${userText}"`);
 
-  // private async processWithAI(
-  //   userText: string,
-  //   history: Message[],
-  //   bot: Bot,
-  // ): Promise<string> {
-  //   this.logger.log(`Processing AI request for: "${userText}"`);
+    // Get current product inventory for this user
+    const productContext = await this.productsService._getProductsForAI(
+      bot.organizationId, //todo
+    );
 
-  //   // Get current product inventory for this user
-  //   const productContext = await this.productsService.getProductsForAI(
-  //     bot.organizationId, //todo
-  //   );
+    // Get user's orders for context
+    // const userOrders = await this.ordersService.getOrdersByUser(
+    //   bot.organizationId,
+    // ); //todo
 
-  //   // Get user's orders for context
-  //   const userOrders = await this.ordersService.getOrdersByUser(
-  //     bot.organizationId,
-  //   ); //todo
+    const aiResponse = await this.geminiService.generateResponse(
+      userText,
+      history,
+      productContext,
+      [],
+    );
 
-  //   const aiResponse = await this.geminiService.generateResponse(
-  //     userText,
-  //     history,
-  //     productContext,
-  //     userOrders,
-  //   );
+    // Handle order creation intent
+    // if (aiResponse.intent === 'CREATE_ORDER' && aiResponse.orderData) {
+    //   await this.handleOrderIntent(aiResponse.orderData, bot.organizationId);
+    // }
 
-  //   // Handle order creation intent
-  //   if (aiResponse.intent === 'CREATE_ORDER' && aiResponse.orderData) {
-  //     await this.handleOrderIntent(aiResponse.orderData, bot.organizationId);
-  //   }
+    // // Handle order fetching intent
+    // if (aiResponse.intent === 'FETCH_ORDERS' && aiResponse.shouldFetchOrders) {
+    //   return await this.handleFetchOrdersIntent(bot.organizationId);
+    // }
 
-  //   // Handle order fetching intent
-  //   if (aiResponse.intent === 'FETCH_ORDERS' && aiResponse.shouldFetchOrders) {
-  //     return await this.handleFetchOrdersIntent(bot.organizationId);
-  //   }
-
-  //   return aiResponse.text;
-  // }
+    return aiResponse.text;
+  }
 
   // private async handleOrderIntent(
   //   orderData: any,
