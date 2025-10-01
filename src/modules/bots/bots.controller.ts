@@ -22,7 +22,7 @@ import { JwtAuthGuard } from '@guards/jwt-auth.guard';
 import { CreateBotDto } from './dto/create-bot.dto';
 import { UpdateBotDto } from './dto/update-bot.dto';
 import { Bot } from '@prisma/client';
-import { webhookResponse } from '@core/webhook/webhook.service';
+import { webhookResponse } from '@core/webhook-helper/webhook-helper.service';
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
 import { PaginationDto } from '@/shared/dto';
@@ -69,7 +69,6 @@ export class BotsController {
     description: 'Search term for filtering by product name or field values',
     required: false,
     type: String,
-    example: 'laptop',
   })
   @ApiQuery({
     name: 'order',

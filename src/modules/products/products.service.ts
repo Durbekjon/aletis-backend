@@ -31,9 +31,12 @@ export class ProductsService {
     field: { type: FieldType; required: boolean; options?: string[] },
     value: any,
   ): void {
-      if (field.required && (value === null || value === undefined || value === '')) {
-        throw new BadRequestException(`Field ${field.type} is required`);
-      }
+    if (
+      field.required &&
+      (value === null || value === undefined || value === '')
+    ) {
+      throw new BadRequestException(`Field ${field.type} is required`);
+    }
 
     if (value === null || value === undefined || value === '') {
       return; // Optional field can be empty
@@ -57,7 +60,9 @@ export class ProductsService {
         break;
       case FieldType.DATE:
         if (!(value instanceof Date) && typeof value !== 'string') {
-          throw new BadRequestException('Date field must be a date or date string');
+          throw new BadRequestException(
+            'Date field must be a date or date string',
+          );
         }
         break;
       case FieldType.ENUM:
@@ -65,13 +70,17 @@ export class ProductsService {
           throw new BadRequestException('Enum field must be a string');
         }
         if (field.options && !field.options.includes(value)) {
-          throw new BadRequestException(`Enum value must be one of: ${field.options.join(', ')}`);
+          throw new BadRequestException(
+            `Enum value must be one of: ${field.options.join(', ')}`,
+          );
         }
         break;
       case FieldType.IMAGE:
       case FieldType.FILE:
         if (typeof value !== 'object' || !value.fileId) {
-          throw new BadRequestException('File/Image field must be an object with fileId');
+          throw new BadRequestException(
+            'File/Image field must be an object with fileId',
+          );
         }
         break;
       default:
@@ -97,9 +106,13 @@ export class ProductsService {
       throw new BadRequestException('One or more files not found');
     }
 
-    const invalidFiles = files.filter(file => file.organizationId !== organizationId);
+    const invalidFiles = files.filter(
+      (file) => file.organizationId !== organizationId,
+    );
     if (invalidFiles.length > 0) {
-      throw new BadRequestException('One or more files do not belong to your organization');
+      throw new BadRequestException(
+        'One or more files do not belong to your organization',
+      );
     }
   }
 
@@ -135,7 +148,10 @@ export class ProductsService {
   /**
    * Transforms Prisma field value to response format
    */
-  private transformFieldValueResponse(fieldValue: any, field: any): FieldValueResponseDto {
+  private transformFieldValueResponse(
+    fieldValue: any,
+    field: any,
+  ): FieldValueResponseDto {
     return {
       id: fieldValue.id,
       fieldId: fieldValue.fieldId,
@@ -182,19 +198,26 @@ export class ProductsService {
       });
 
       if (!schema) {
-        throw new NotFoundException('Product schema not found for organization');
+        throw new NotFoundException(
+          'Product schema not found for organization',
+        );
       }
 
       // Validate images if provided
       if (createProductDto.images && createProductDto.images.length > 0) {
-        await this.validateFileOwnership(createProductDto.images, organizationId);
+        await this.validateFileOwnership(
+          createProductDto.images,
+          organizationId,
+        );
       }
       // Validate field values
-      const fieldMap = new Map(schema.fields.map(field => [field.id, field]));
+      const fieldMap = new Map(schema.fields.map((field) => [field.id, field]));
       for (const fieldValue of createProductDto.fields) {
         const field = fieldMap.get(fieldValue.fieldId);
         if (!field) {
-          throw new BadRequestException(`Field with ID ${fieldValue.fieldId} not found in schema`);
+          throw new BadRequestException(
+            `Field with ID ${fieldValue.fieldId} not found in schema`,
+          );
         }
         this.validateFieldValue(field, fieldValue.value);
       }
@@ -208,18 +231,23 @@ export class ProductsService {
             price: createProductDto.price,
             schemaId: schema.id,
             organizationId,
-            images: createProductDto.images ? {
-              connect: createProductDto.images.map(id => ({ id }))
-            } : undefined,
+            images: createProductDto.images
+              ? {
+                  connect: createProductDto.images.map((id) => ({ id })),
+                }
+              : undefined,
           },
         });
 
         // Create field values
         const fieldValues = await Promise.all(
-          createProductDto.fields.map(fieldValue => {
+          createProductDto.fields.map((fieldValue) => {
             const field = fieldMap.get(fieldValue.fieldId)!;
-            const transformedValue = this.transformFieldValue(field.type, fieldValue.value);
-            
+            const transformedValue = this.transformFieldValue(
+              field.type,
+              fieldValue.value,
+            );
+
             return tx.fieldValue.create({
               data: {
                 productId: product.id,
@@ -227,7 +255,7 @@ export class ProductsService {
                 ...transformedValue,
               },
             });
-          })
+          }),
         );
 
         return { product, fieldValues };
@@ -238,10 +266,16 @@ export class ProductsService {
       // Return the created product with full details
       return this.getProductById(result.product.id, userId);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
-      this.logger.error(`Failed to create product: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to create product: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to create product');
     }
   }
@@ -264,22 +298,31 @@ export class ProductsService {
       });
 
       if (!existingProduct) {
-        throw new NotFoundException('Product not found or does not belong to your organization');
+        throw new NotFoundException(
+          'Product not found or does not belong to your organization',
+        );
       }
 
       // Validate images if provided
       if (updateProductDto.images && updateProductDto.images.length > 0) {
-        await this.validateFileOwnership(updateProductDto.images, organizationId);
+        await this.validateFileOwnership(
+          updateProductDto.images,
+          organizationId,
+        );
       }
 
       // Validate field values if provided
       if (updateProductDto.fields) {
-        const fieldMap = new Map(existingProduct.schema.fields.map(field => [field.id, field]));
+        const fieldMap = new Map(
+          existingProduct.schema.fields.map((field) => [field.id, field]),
+        );
         for (const fieldValue of updateProductDto.fields) {
           if (fieldValue.fieldId) {
             const field = fieldMap.get(fieldValue.fieldId);
             if (!field) {
-              throw new BadRequestException(`Field with ID ${fieldValue.fieldId} not found in schema`);
+              throw new BadRequestException(
+                `Field with ID ${fieldValue.fieldId} not found in schema`,
+              );
             }
             if (fieldValue.value !== undefined) {
               this.validateFieldValue(field, fieldValue.value);
@@ -295,11 +338,13 @@ export class ProductsService {
           where: { id: productId },
           data: {
             ...(updateProductDto.name && { name: updateProductDto.name }),
-            ...(updateProductDto.price !== undefined && { price: updateProductDto.price }),
+            ...(updateProductDto.price !== undefined && {
+              price: updateProductDto.price,
+            }),
             ...(updateProductDto.images && {
               images: {
-                set: updateProductDto.images.map(id => ({ id }))
-              }
+                set: updateProductDto.images.map((id) => ({ id })),
+              },
             }),
           },
         });
@@ -308,10 +353,15 @@ export class ProductsService {
         if (updateProductDto.fields) {
           for (const fieldValue of updateProductDto.fields) {
             if (fieldValue.fieldId && fieldValue.value !== undefined) {
-              const field = existingProduct.schema.fields.find(f => f.id === fieldValue.fieldId);
+              const field = existingProduct.schema.fields.find(
+                (f) => f.id === fieldValue.fieldId,
+              );
               if (field) {
-                const transformedValue = this.transformFieldValue(field.type, fieldValue.value);
-                
+                const transformedValue = this.transformFieldValue(
+                  field.type,
+                  fieldValue.value,
+                );
+
                 await tx.fieldValue.upsert({
                   where: {
                     productId_fieldId: {
@@ -339,10 +389,16 @@ export class ProductsService {
       // Return the updated product with full details
       return this.getProductById(result.id, userId);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
-      this.logger.error(`Failed to update product ${productId}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to update product ${productId}: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to update product');
     }
   }
@@ -360,7 +416,9 @@ export class ProductsService {
       });
 
       if (!product) {
-        throw new NotFoundException('Product not found or does not belong to your organization');
+        throw new NotFoundException(
+          'Product not found or does not belong to your organization',
+        );
       }
 
       // Delete product (field values will be cascade deleted)
@@ -373,7 +431,10 @@ export class ProductsService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(`Failed to delete product ${productId}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to delete product ${productId}: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to delete product');
     }
   }
@@ -381,7 +442,10 @@ export class ProductsService {
   /**
    * Gets a product by ID
    */
-  async getProductById(productId: number, userId: number): Promise<ProductResponseDto> {
+  async getProductById(
+    productId: number,
+    userId: number,
+  ): Promise<ProductResponseDto> {
     try {
       const organizationId = await this.getUserOrganizationId(userId);
 
@@ -399,21 +463,26 @@ export class ProductsService {
       });
 
       if (!product) {
-        throw new NotFoundException('Product not found or does not belong to your organization');
+        throw new NotFoundException(
+          'Product not found or does not belong to your organization',
+        );
       }
 
       // Transform the response
-      const transformedFields: FieldValueResponseDto[] = product.fields.map(fieldValue =>
-        this.transformFieldValueResponse(fieldValue, fieldValue.field)
+      const transformedFields: FieldValueResponseDto[] = product.fields.map(
+        (fieldValue) =>
+          this.transformFieldValueResponse(fieldValue, fieldValue.field),
       );
 
-      const transformedImages: ProductImageResponseDto[] = product.images.map(image => ({
-        id: image.id,
-        key: image.key,
-        originalName: image.originalName,
-        size: image.size,
-        mimeType: image.mimeType,
-      }));
+      const transformedImages: ProductImageResponseDto[] = product.images.map(
+        (image) => ({
+          id: image.id,
+          key: image.key,
+          originalName: image.originalName,
+          size: image.size,
+          mimeType: image.mimeType,
+        }),
+      );
 
       return {
         id: product.id,
@@ -431,7 +500,10 @@ export class ProductsService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(`Failed to get product ${productId}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to get product ${productId}: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to retrieve product');
     }
   }
@@ -505,7 +577,7 @@ export class ProductsService {
               select: {
                 id: true,
                 key: true,
-              }
+              },
             },
             fields: {
               include: {
@@ -520,38 +592,47 @@ export class ProductsService {
       ]);
 
       // Transform the response
-      const transformedProducts: ProductResponseDto[] = products.map(product => {
-        const transformedFields: FieldValueResponseDto[] = product.fields.map(fieldValue =>
-          this.transformFieldValueResponse(fieldValue, fieldValue.field)
-        );
+      const transformedProducts: ProductResponseDto[] = products.map(
+        (product) => {
+          const transformedFields: FieldValueResponseDto[] = product.fields.map(
+            (fieldValue) =>
+              this.transformFieldValueResponse(fieldValue, fieldValue.field),
+          );
 
-        const transformedImages: ProductImageResponseDto[] = product.images.map(image => ({
-          id: image.id,
-          key: image.key,
-          // originalName: image.originalName,
-          // size: image.size,
-          // mimeType: image.mimeType,
-        }));
+          const transformedImages: ProductImageResponseDto[] =
+            product.images.map((image) => ({
+              id: image.id,
+              key: image.key,
+              // originalName: image.originalName,
+              // size: image.size,
+              // mimeType: image.mimeType,
+            }));
 
-        return {
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          schemaId: product.schemaId,
-          schemaName: product.schema.name,
-          organizationId: product.organizationId,
-          images: transformedImages,
-          fields: transformedFields,
-          createdAt: product.createdAt,
-          updatedAt: product.updatedAt,
-        };
-      });
+          return {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            schemaId: product.schemaId,
+            schemaName: product.schema.name,
+            organizationId: product.organizationId,
+            images: transformedImages,
+            fields: transformedFields,
+            createdAt: product.createdAt,
+            updatedAt: product.updatedAt,
+          };
+        },
+      );
 
       this.logger.log(
         `Retrieved ${products.length} products for organization ${organizationId} (page ${page}, total: ${total})`,
       );
 
-      return new ProductPaginatedResponseDto(transformedProducts, total, page || 1, limit || 20);
+      return new ProductPaginatedResponseDto(
+        transformedProducts,
+        total,
+        page || 1,
+        limit || 20,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to get products for organization: ${error.message}`,
@@ -560,7 +641,6 @@ export class ProductsService {
       throw new InternalServerErrorException('Failed to retrieve products');
     }
   }
-
   /**
    * Bulk deletes products
    */
@@ -582,8 +662,8 @@ export class ProductsService {
       });
 
       if (products.length !== productIds.length) {
-        const foundIds = products.map(p => p.id);
-        const missingIds = productIds.filter(id => !foundIds.includes(id));
+        const foundIds = products.map((p) => p.id);
+        const missingIds = productIds.filter((id) => !foundIds.includes(id));
         throw new NotFoundException(
           `Products not found or do not belong to your organization: ${missingIds.join(', ')}`,
         );
@@ -591,7 +671,7 @@ export class ProductsService {
 
       // Delete products in a transaction
       await this.prisma.$transaction(
-        productIds.map(id =>
+        productIds.map((id) =>
           this.prisma.product.delete({
             where: { id },
           }),
@@ -600,11 +680,76 @@ export class ProductsService {
 
       this.logger.log(`Successfully deleted ${products.length} products`);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
-      this.logger.error(`Failed to bulk delete products: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to bulk delete products: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to delete products');
     }
+  }
+
+  async _getProductsForAI(organizationId: number): Promise<string> {
+    const products = await this.prisma.product.findMany({
+      where: { organizationId },
+      include: {
+        fields: {
+          include: {
+            field: true,
+          },
+        },
+      },
+    });
+    return this.transformProductsToString(products);
+  }
+
+  private transformProductsToString(products: any) {
+    return products
+      .map((p: any) => {
+        const fieldsStr = (p.fields || [])
+          .map((f: any) => {
+            let value;
+            switch (f.field.type) {
+              case 'TEXT':
+                value = f.valueText;
+                break;
+              case 'NUMBER':
+                value = f.valueNumber;
+                break;
+              case 'BOOLEAN':
+                value = f.valueBool ? 'true' : 'false';
+                break;
+              case 'DATE':
+                value = f.valueDate
+                  ? f.valueDate.toISOString().split('T')[0]
+                  : null;
+                break;
+              case 'ENUM':
+                value = f.valueJson;
+                break;
+              case 'FILE':
+              case 'IMAGE':
+                value = f.valueJson?.fileName || f.valueJson?.url || 'file';
+                break;
+              default:
+                value =
+                  f.valueText ||
+                  f.valueNumber ||
+                  f.valueBool ||
+                  f.valueDate ||
+                  f.valueJson;
+            }
+            return `${f.field.name}: ${value}`;
+          })
+          .join(', ');
+
+        return `Product: ${p.name} | Price: ${p.price} | Qty: ${p.quantity || 1} | Fields: {${fieldsStr}}`;
+      })
+      .join('\n');
   }
 }

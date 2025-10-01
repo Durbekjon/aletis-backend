@@ -4,7 +4,10 @@ import { Bot, MemberRole, Organization, Prisma } from '@prisma/client';
 import { CreateBotDto } from './dto/create-bot.dto';
 import { UpdateBotDto } from './dto/update-bot.dto';
 import { EncryptionService } from '@core/encryption/encryption.service';
-import { webhookResponse, WebhookService } from '@core/webhook/webhook.service';
+import {
+  webhookResponse,
+  WebhookHelperService,
+} from '@core/webhook-helper/webhook-helper.service';
 import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
 export interface TelegramBotInfo {
   id: string;
@@ -23,7 +26,7 @@ export class BotsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
-    private readonly webhook: WebhookService,
+    private readonly webhookHelper: WebhookHelperService,
   ) {}
   /**
    * Creates a new bot
@@ -117,7 +120,7 @@ export class BotsService {
     }
 
     const decryptedToken = this.encryption.decrypt(bot.token);
-    await this.webhook.deleteWebhook(decryptedToken);
+    await this.webhookHelper.deleteWebhook(decryptedToken);
 
     const { id, first_name, username } = await this.validateBotByTelegramAPI(
       dto.token,
@@ -155,7 +158,7 @@ export class BotsService {
       throw new NotFoundException('Bot not found');
     }
     const decryptedToken = this.encryption.decrypt(bot.token);
-    const result = await this.webhook.setWebhook(
+    const result = await this.webhookHelper.setWebhook(
       decryptedToken,
       botId,
       organization.id,
@@ -178,7 +181,7 @@ export class BotsService {
       throw new NotFoundException('Bot not found');
     }
     const decryptedToken = this.encryption.decrypt(bot.token);
-    const result = await this.webhook.deleteWebhook(decryptedToken);
+    const result = await this.webhookHelper.deleteWebhook(decryptedToken);
     if (result.isOK) {
       await this.prisma.bot.update({
         where: { id: botId },
@@ -186,6 +189,12 @@ export class BotsService {
       });
     }
     return result;
+  }
+
+  async _getBot(botId: number, organizationId: number): Promise<Bot | null> {
+    return this.prisma.bot.findUnique({
+      where: { id: botId, organizationId },
+    });
   }
 
   private async validateBotByTelegramAPI(

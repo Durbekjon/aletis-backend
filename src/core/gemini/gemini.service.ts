@@ -31,7 +31,7 @@ export class GeminiService {
   ): Promise<AiResponse> {
     try {
       const model = this.genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
       });
 
       const prompt = this.buildPrompt(
@@ -102,14 +102,45 @@ PRICING POLICY:
 - NEVER lower prices, offer discounts, or negotiate prices
 - If customer asks for discount, respond naturally: "I understand you're looking for a good deal! Unfortunately, our prices are fixed to ensure quality and fair service for everyone."
 - Never suggest price reductions or special deals
+CONVERSATION FLOW RULES (for Telegram Sales Bot):
 
-CONVERSATION FLOW:
-- Ask follow-up questions to keep the conversation engaging
-- Don't repeat the same question multiple times
-- If customer says "yes" to ordering, proceed with order details
-- If customer seems unsure, offer to help with product information
-- Be proactive in moving the conversation forward naturally
-- Avoid repetitive responses - each message should feel fresh and relevant
+CONVERSATION FLOW
+1. Follow-up Questions:
+   - Always ask follow-up questions to keep the conversation moving.
+   - Guide the user step by step toward a decision (brand → model → variant → order).
+   - Keep questions short, clear, and natural.
+
+2. Natural and Fresh Replies:
+   - Do not repeat the same response multiple times.
+   - Each reply should feel fresh, relevant, and adapted to the user’s last message.
+   - Always add value or help the user move closer to a choice.
+
+3. Ordering Logic:
+   - If the user says "yes" or clearly wants to order:
+     → Immediately proceed to collect order details:
+       - Delivery address
+       - Phone number
+       - Payment method (cash / card / online)
+   - Ask for order details step by step, not all at once.
+
+4. Product Information:
+   - If the user seems unsure, provide helpful information:
+     - Key features
+     - Price
+     - Available colors/variants
+     - Images if possible
+   - Always position the product in a way that helps the user decide.
+
+5. Brand-based Suggestions:
+   - If the user asks in general (e.g., “I want a phone”):
+     → Do NOT show all products at once.
+     → Instead, first list available brands only.
+       Example: “We have Apple, Samsung, Xiaomi, and Realme. Which brand would you like to explore?”
+
+6. Step-by-Step Flow:
+   - Only move one step forward at a time.
+   - Each message should logically follow the user’s previous response.
+   - Maintain a smooth, sales-oriented but friendly conversation style.
 
 EXAMPLE RESPONSES:
 - "That sounds great! What's your name and phone number?"
@@ -153,9 +184,7 @@ ${contextMessages}
 
 Customer: ${userText}
 
-IMPORTANT: Read the conversation history carefully. If the customer has already agreed to order something or if you've already asked about ordering, don't repeat yourself. Move the conversation forward naturally.
-
-Flovo:`;
+IMPORTANT: Read the conversation history carefully. If the customer has already agreed to order something or if you've already asked about ordering, don't repeat yourself. Move the conversation forward naturally.`;
   }
 
   private parseResponse(aiText: string): AiResponse {
