@@ -1,7 +1,16 @@
-import { IsString, IsNotEmpty, IsNumber, IsArray, IsOptional, ValidateNested, IsInt, Min, IsBoolean, IsDateString, IsObject, ValidateIf } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsArray,
+  IsOptional,
+  ValidateNested,
+  IsInt,
+  Min,
+  ArrayMaxSize,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { FieldType } from '@prisma/client';
 
 export class CreateFieldValueDto {
   @ApiProperty({
@@ -19,7 +28,7 @@ export class CreateFieldValueDto {
       { type: 'number' },
       { type: 'boolean' },
       { type: 'string', format: 'date-time' },
-      { type: 'object' }
+      { type: 'object' },
     ],
     example: 'Sample text value',
   })
@@ -59,6 +68,7 @@ export class CreateProductDto {
   @IsOptional()
   @IsArray()
   @IsInt({ each: true })
+  @ArrayMaxSize(10)
   images?: number[];
 
   @ApiProperty({
@@ -67,7 +77,7 @@ export class CreateProductDto {
     example: [
       { fieldId: 1, value: 'Intel i7' },
       { fieldId: 2, value: 16 },
-      { fieldId: 3, value: true }
+      { fieldId: 3, value: true },
     ],
   })
   @IsArray()
