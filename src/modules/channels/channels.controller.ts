@@ -1,35 +1,54 @@
-import {
-  Controller,
-  Get,
-  Delete,
-  Param,
-  UseGuards,
-  ParseIntPipe,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Patch,Delete, UseGuards } from '@nestjs/common';
 import { ChannelsService } from './channels.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { CreateChannelDto } from './dto/create-channel.dto';
+import { CurrentUser } from '@auth/decorators/current-user.decorator';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
+import { UpdateChannelDto } from './dto/udpate-channel.dto';
 
-@Controller('channels')
+@ApiTags('Channels')
+@ApiBearerAuth('bearer')
 @UseGuards(JwtAuthGuard)
+@Controller({ path: 'channels', version: '1' })
 export class ChannelsController {
-  constructor(private readonly channelsService: ChannelsService) {}
+  constructor(private readonly channelService: ChannelsService) {}
+
+  @Post()
+  @ApiOperation({ description: 'Add telegram Channel' })
+  async createChannel(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: CreateChannelDto,
+  ) {
+    const { userId } = user;
+    return this.channelService.createChannel(+userId, body);
+  }
 
   @Get()
-  async getUserChannels(@CurrentUser() user: JwtPayload) {
-    return this.channelsService.getChannelsForUser(Number(user.userId));
+  @ApiOperation({ description: 'Get all telegram channels' })
+  async getChannels(@CurrentUser() user: JwtPayload) {
+    const { userId } = user;
+    return this.channelService.getChannels(+userId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ description: 'Get a telegram channel by id' })
+  async getChannelById(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    const { userId } = user;
+    return this.channelService.getChannelById(+userId, +id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ description: 'Update a telegram channel by id' })
+  async updateChannel(@CurrentUser() user: JwtPayload, @Param('id') id: string, @Body() body: UpdateChannelDto) {
+    const { userId } = user;
+    return this.channelService.updateChannel(+userId, +id, body);
   }
 
   @Delete(':id')
-  async disconnectChannel(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseIntPipe) channelId: number,
-  ): Promise<{ message: string }> {
-    await this.channelsService.disconnectChannel(
-      Number(user.userId),
-      channelId,
-    );
-    return { message: 'Channel disconnected successfully' };
+  @ApiOperation({ description: 'Delete a telegram channel by id' })
+  async deleteChannel(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    const { userId } = user;
+    return this.channelService.deleteChannel(+userId, +id);
   }
 }
