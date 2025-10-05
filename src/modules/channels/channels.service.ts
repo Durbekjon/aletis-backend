@@ -6,7 +6,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Bot, ConnectionStatus, type Channel } from '@prisma/client';
+import { Bot, ConnectionStatus, Prisma, type Channel } from '@prisma/client';
+import { PaginatedResponseDto, PaginationDto } from '@/shared/dto';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { EncryptionService } from '../../core/encryption/encryption.service';
 
@@ -266,15 +267,51 @@ export class ChannelsService {
     return username.startsWith('@') ? username.slice(1) : username;
   }
 
-  async getChannels(userId: number): Promise<Channel[]> {
+  async getChannels(
+    userId: number,
+    paginationDto: PaginationDto,
+  ): Promise<PaginatedResponseDto<Channel>> {
     this.logger.log(`Fetching channels for user ${userId}`);
 
     const organizationId = await this.getUserOrganizationId(userId);
 
-    return this.prisma.channel.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const searchFilter = paginationDto.search
+      ? {
+          OR: [
+            {
+              title: {
+                contains: paginationDto.search,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+            {
+              username: {
+                contains: paginationDto.search,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+          ],
+        }
+      : {};
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.channel.findMany({
+        where: { organizationId, ...searchFilter },
+        skip: paginationDto.skip,
+        take: paginationDto.take,
+        orderBy: { createdAt: paginationDto.order },
+      }),
+      this.prisma.channel.count({
+        where: { organizationId, ...searchFilter },
+      }),
+    ]);
+
+    return new PaginatedResponseDto<Channel>(
+      items,
+      total,
+      paginationDto.page ?? 1,
+      paginationDto.limit ?? 20,
+    );
   }
 
   async getChannelById(userId: number, channelId: number): Promise<Channel> {
