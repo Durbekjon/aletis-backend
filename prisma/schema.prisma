@@ -193,17 +193,18 @@ enum MemberRole {
 }
 
 model Bot {
-  id             Int            @id @default(autoincrement())
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  token          String         @unique
-  isEnabled      Boolean        @default(true)
+  id             Int          @id @default(autoincrement())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  token          String       @unique
+  isEnabled      Boolean      @default(true)
   telegramId     String
   name           String
   username       String
   organizationId Int
-  organization   Organization   @relation(fields: [organizationId], references: [id])
-  customers  Customer[]
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  customers      Customer[]
+  channels       Channel[]
 
   @@index([organizationId, name])
   @@index([organizationId, username])
@@ -264,15 +265,31 @@ model Order {
 }
 
 model Channel {
-  id             Int          @id @default(autoincrement())
-  telegramId     BigInt       @unique
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id             Int              @id @default(autoincrement())
+  telegramId     String @unique
+  username       String @unique
+  description    String?
   title          String
-  organizationId Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         ConnectionStatus @default(PENDING)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  connectedBotId Int?
+  connectedBot   Bot?             @relation(fields: [connectedBotId], references: [id], onDelete: SetNull)
+  organizationId Int @unique
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@unique([telegramId, username, organizationId])
   @@map("channels")
+}
+
+
+enum ConnectionStatus {
+  PENDING
+  NOT_FOUND
+  NOT_ADMIN
+  NO_REQUIRED_PERMISSIONS
+  DONE
+  FAIL
 }
 
 enum CompanyType {
