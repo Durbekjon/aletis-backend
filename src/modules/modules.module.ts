@@ -12,6 +12,7 @@ import { BotsModule } from '@bots/bots.module';
 import { CustomersModule } from '@customers/customers.module';
 import { WebhookModule } from '@webhook/webhook.module';
 import { MessagesModule } from './messages/messages.module';
+import { PostsModule } from './posts/posts.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { MessagesModule } from './messages/messages.module';
 
     // OrdersModule,
     ChannelsModule,
+    PostsModule,
   ],
 })
 export class ModulesModule {}
