@@ -60,7 +60,7 @@ export class PostsService {
     if (status === PostStatus.SCHEDULED && scheduledAt) {
       await this.schedulePost(userId, post.id, scheduledAt.toISOString());
     } else if (status === PostStatus.SENT) {
-      await this.editPostOnTelegram(post.id);
+      await this.sendPostToTelegram(post.id);
     } 
     return post;
   }
