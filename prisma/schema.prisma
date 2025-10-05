@@ -57,11 +57,11 @@ enum BUSINESS_CATEGORY {
 }
 
 model Product {
-  id     Int    @id @default(autoincrement())
-  name   String
-  price  Float
-  images File[]
-
+  id             Int           @id @default(autoincrement())
+  name           String
+  price          Float
+  images         File[]
+  posts          Post[]
   schemaId       Int
   schema         ProductSchema @relation(fields: [schemaId], references: [id])
   fields         FieldValue[]
@@ -266,8 +266,8 @@ model Order {
 
 model Channel {
   id             Int              @id @default(autoincrement())
-  telegramId     String @unique
-  username       String @unique
+  telegramId     String           @unique
+  username       String           @unique
   description    String?
   title          String
   status         ConnectionStatus @default(PENDING)
@@ -275,13 +275,13 @@ model Channel {
   updatedAt      DateTime         @updatedAt
   connectedBotId Int?
   connectedBot   Bot?             @relation(fields: [connectedBotId], references: [id], onDelete: SetNull)
-  organizationId Int @unique
+  organizationId Int              @unique
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  posts          Post[]
 
   @@unique([telegramId, username, organizationId])
   @@map("channels")
 }
-
 
 enum ConnectionStatus {
   PENDING
@@ -290,6 +290,35 @@ enum ConnectionStatus {
   NO_REQUIRED_PERMISSIONS
   DONE
   FAIL
+}
+
+model Post {
+  id          Int        @id @default(autoincrement())
+  productId   Int
+  product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  content     String
+  channelId   Int
+  channel     Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  status      PostStatus @default(DRAFT)
+  metaData    Json?
+  telegramId  String?
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  failLog     String?
+
+  @@index([content])
+  @@index([channelId, status])
+  @@index([telegramId])
+  @@map("posts")
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  FAILED
 }
 
 enum CompanyType {

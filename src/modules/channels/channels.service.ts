@@ -111,7 +111,6 @@ export class ChannelsService {
     const status = await this.verifyChannelStatus(username, bot);
 
     this.logger.log(`Public channel status: ${status} for @${username}`);
-
     return this.prisma.channel.create({
       data: {
         telegramId: channelInfo.id.toString(),
@@ -119,6 +118,7 @@ export class ChannelsService {
         status,
         username,
         organizationId,
+        connectedBotId: bot.id,
       },
     });
   }
