@@ -20,8 +20,12 @@ export class PostsService {
   ) {}
 
   private async getUserOrganizationId(userId: number): Promise<number> {
-    const member = await this.prisma.member.findUnique({ where: { userId }, select: { organizationId: true } });
-    if (!member) throw new ForbiddenException('User is not a member of any organization');
+    const member = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    if (!member)
+      throw new ForbiddenException('User is not a member of any organization');
     return member.organizationId;
   }
 
@@ -36,17 +40,24 @@ export class PostsService {
     ]);
     if (!product) throw new NotFoundException('Product not found');
     if (!channel) throw new NotFoundException('Channel not found');
-    if (product.organizationId !== organizationId) throw new ForbiddenException('Product out of organization');
-    if (channel.organizationId !== organizationId) throw new ForbiddenException('Channel out of organization');
+    if (product.organizationId !== organizationId)
+      throw new ForbiddenException('Product out of organization');
+    if (channel.organizationId !== organizationId)
+      throw new ForbiddenException('Channel out of organization');
     return { product, channel };
   }
 
   async createPost(userId: number, dto: CreatePostDto) {
     const organizationId = await this.getUserOrganizationId(userId);
-    await this.ensureOwnershipByIds(organizationId, dto.productId, dto.channelId);
+    await this.ensureOwnershipByIds(
+      organizationId,
+      dto.productId,
+      dto.channelId,
+    );
 
     const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : undefined;
-    const status: PostStatus = dto.status ?? (scheduledAt ? PostStatus.SCHEDULED : PostStatus.DRAFT);
+    const status: PostStatus =
+      dto.status ?? (scheduledAt ? PostStatus.SCHEDULED : PostStatus.DRAFT);
 
     const post = await this.prisma.post.create({
       data: {
@@ -61,24 +72,36 @@ export class PostsService {
       await this.schedulePost(userId, post.id, scheduledAt.toISOString());
     } else if (status === PostStatus.SENT) {
       await this.sendPostToTelegram(post.id);
-    } 
+    }
     return post;
   }
 
   async updatePost(userId: number, postId: number, dto: UpdatePostDto) {
     const organizationId = await this.getUserOrganizationId(userId);
-    const post = await this.prisma.post.findUnique({ where: { id: postId }, include: { channel: true, product: true } });
+    const post = await this.prisma.post.findUnique({
+      where: { id: postId },
+      include: { channel: true, product: true },
+    });
     if (!post) throw new NotFoundException('Post not found');
-    if (post.channel.organizationId !== organizationId || post.product.organizationId !== organizationId)
+    if (
+      post.channel.organizationId !== organizationId ||
+      post.product.organizationId !== organizationId
+    )
       throw new ForbiddenException('Post out of organization');
 
     let channelId = post.channelId;
     if (dto.channelId && dto.channelId !== post.channelId) {
-      await this.ensureOwnershipByIds(organizationId, post.productId, dto.channelId);
+      await this.ensureOwnershipByIds(
+        organizationId,
+        post.productId,
+        dto.channelId,
+      );
       channelId = dto.channelId;
     }
 
-    const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : post.scheduledAt;
+    const scheduledAt = dto.scheduledAt
+      ? new Date(dto.scheduledAt)
+      : post.scheduledAt;
 
     const updated = await this.prisma.post.update({
       where: { id: postId },
@@ -94,9 +117,13 @@ export class PostsService {
 
   async deletePost(userId: number, postId: number) {
     const organizationId = await this.getUserOrganizationId(userId);
-    const post = await this.prisma.post.findUnique({ where: { id: postId }, include: { channel: { include: { connectedBot: true } } } });
+    const post = await this.prisma.post.findUnique({
+      where: { id: postId },
+      include: { channel: { include: { connectedBot: true } } },
+    });
     if (!post) throw new NotFoundException('Post not found');
-    if (!post.channel || post.channel.organizationId !== organizationId) throw new ForbiddenException('Post out of organization');
+    if (!post.channel || post.channel.organizationId !== organizationId)
+      throw new ForbiddenException('Post out of organization');
 
     // If already sent, try deleting from Telegram
     if (post.telegramId && post.channel.connectedBot) {
@@ -107,7 +134,9 @@ export class PostsService {
           message_id: Number(post.telegramId),
         });
       } catch (err) {
-        this.logger.warn(`Failed to delete Telegram message for post ${postId}: ${err?.message}`);
+        this.logger.warn(
+          `Failed to delete Telegram message for post ${postId}: ${err?.message}`,
+        );
       }
     }
 
@@ -115,15 +144,25 @@ export class PostsService {
     return { success: true };
   }
 
-  async getPostsByChannel(userId: number, channelId: number, pagination: PaginationDto) {
+  async getPostsByChannel(
+    userId: number,
+    channelId: number,
+    pagination: PaginationDto,
+  ) {
     const organizationId = await this.getUserOrganizationId(userId);
-    const channel = await this.prisma.channel.findUnique({ where: { id: channelId } });
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+    });
     if (!channel) throw new NotFoundException('Channel not found');
-    if (channel.organizationId !== organizationId) throw new ForbiddenException('Channel out of organization');
+    if (channel.organizationId !== organizationId)
+      throw new ForbiddenException('Channel out of organization');
 
     const searchFilter = pagination.search
       ? {
-          content: { contains: pagination.search, mode: Prisma.QueryMode.insensitive },
+          content: {
+            contains: pagination.search,
+            mode: Prisma.QueryMode.insensitive,
+          },
         }
       : {};
 
@@ -137,18 +176,30 @@ export class PostsService {
       this.prisma.post.count({ where: { channelId, ...searchFilter } }),
     ]);
 
-    return new PaginatedResponseDto(items, total, pagination.page ?? 1, pagination.limit ?? 20);
+    return new PaginatedResponseDto(
+      items,
+      total,
+      pagination.page ?? 1,
+      pagination.limit ?? 20,
+    );
   }
 
   async schedulePost(userId: number, postId: number, scheduledAtISO: string) {
     const organizationId = await this.getUserOrganizationId(userId);
-    const post = await this.prisma.post.findUnique({ where: { id: postId }, include: { channel: true, product: true } });
+    const post = await this.prisma.post.findUnique({
+      where: { id: postId },
+      include: { channel: true, product: true },
+    });
     if (!post) throw new NotFoundException('Post not found');
-    if (post.channel.organizationId !== organizationId || post.product.organizationId !== organizationId)
+    if (
+      post.channel.organizationId !== organizationId ||
+      post.product.organizationId !== organizationId
+    )
       throw new ForbiddenException('Post out of organization');
 
     const scheduledAt = new Date(scheduledAtISO);
-    if (Number.isNaN(scheduledAt.getTime())) throw new BadRequestException('Invalid schedule date');
+    if (Number.isNaN(scheduledAt.getTime()))
+      throw new BadRequestException('Invalid schedule date');
 
     return this.prisma.post.update({
       where: { id: postId },
@@ -165,66 +216,68 @@ export class PostsService {
         product: { include: { images: true } },
       },
     });
-    if (!post) throw new NotFoundException('Post not found');
-    console.log(post.channel);
-    if (!post.channel?.connectedBotId) throw new BadRequestException('Channel has no connected bot');
-    const connectedBot = await this.prisma.bot.findUnique({ where: { id: post.channel.connectedBotId } });
-    if (!connectedBot) throw new BadRequestException('Connected bot not found');
-    const token = this.encryption.decrypt(connectedBot.token);
 
-    // If multiple images, send media group; otherwise send text message
+    if (!post) throw new NotFoundException('Post not found');
+    if (!post.channel?.connectedBotId)
+      throw new BadRequestException('Channel has no connected bot');
+
+    const connectedBot = await this.prisma.bot.findUnique({
+      where: { id: post.channel.connectedBotId },
+    });
+    if (!connectedBot) throw new BadRequestException('Connected bot not found');
+
+    const token = this.encryption.decrypt(connectedBot.token);
     const images = post.product.images || [];
+    const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
+    const botLink = `<a href="https://t.me/${connectedBot.username}?start=post_${postId}">More Info</a>`;
+
     let telegramId: string | null = null;
     let meta: any = {};
 
+    const caption = `${post.content}\n\n👉 ${botLink}`;
+
     if (images.length > 1) {
-      const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
-      console.log({images});
       const media = images.slice(0, 10).map((img, idx) => ({
         type: 'photo',
-        media:  `${baseUrl}/${img.key}`.replace(
-          /\\/g,
-          '/',
-        ),
-        caption: idx === 0 ? post.content : undefined,
+        media: `${baseUrl}/${img.key}`.replace(/\\/g, '/'),
+        caption: idx === 0 ? caption : undefined,
         parse_mode: 'HTML',
       }));
+
       const res = await this.telegram.sendRequest(token, 'sendMediaGroup', {
         chat_id: post.channel.telegramId,
         media,
       });
-      // res.result is array of messages, pick first message_id as reference
-      if (!res.ok) {
+
+      if (!res.ok)
         throw new ForbiddenException('Failed to send media group to Telegram');
-      }
+
       const first = Array.isArray(res.result) ? res.result[0] : undefined;
       telegramId = first?.message_id ? String(first.message_id) : null;
       meta = res.result;
     } else if (images.length === 1) {
-      const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
       const res = await this.telegram.sendRequest(token, 'sendPhoto', {
         chat_id: post.channel.telegramId,
-        photo: `${baseUrl}/${images[0].key}`.replace(
-          /\\/g,
-          '/',
-        ),
-        caption: post.content,
+        photo: `${baseUrl}/${images[0].key}`.replace(/\\/g, '/'),
+        caption,
         parse_mode: 'HTML',
       });
-      if (!res.ok) {
+
+      if (!res.ok)
         throw new ForbiddenException('Failed to send photo to Telegram');
-      }
+
       telegramId = String(res.result?.message_id ?? res.message_id ?? '');
       meta = res.result ?? res;
     } else {
       const res = await this.telegram.sendRequest(token, 'sendMessage', {
         chat_id: post.channel.telegramId,
-        text: post.content,
+        text: caption,
         parse_mode: 'HTML',
       });
-      if (!res.ok) {
+
+      if (!res.ok)
         throw new ForbiddenException('Failed to send message to Telegram');
-      }
+
       telegramId = String(res.result?.message_id ?? res.message_id ?? '');
       meta = res.result ?? res;
     }
@@ -248,23 +301,26 @@ export class PostsService {
     });
     if (!post) throw new NotFoundException('Post not found');
     if (!post.telegramId) return post; // Not sent yet
-    if (!post.channel?.connectedBot) throw new BadRequestException('Channel has no connected bot');
+    if (!post.channel?.connectedBot)
+      throw new BadRequestException('Channel has no connected bot');
 
     const token = this.encryption.decrypt(post.channel.connectedBot.token);
-    await this.telegram.sendRequest(token, 'editMessageCaption', {
-      chat_id: post.channel.telegramId,
-      message_id: Number(post.telegramId),
-      caption: post.content,
-      parse_mode: 'HTML',
-    }).catch(async () => {
-      // fallback to editMessageText for text-only posts
-      await this.telegram.sendRequest(token, 'editMessageText', {
+    await this.telegram
+      .sendRequest(token, 'editMessageCaption', {
         chat_id: post.channel.telegramId,
         message_id: Number(post.telegramId),
-        text: post.content,
+        caption: post.content,
         parse_mode: 'HTML',
+      })
+      .catch(async () => {
+        // fallback to editMessageText for text-only posts
+        await this.telegram.sendRequest(token, 'editMessageText', {
+          chat_id: post.channel.telegramId,
+          message_id: Number(post.telegramId),
+          text: post.content,
+          parse_mode: 'HTML',
+        });
       });
-    });
 
     return post;
   }
