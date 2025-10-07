@@ -9,6 +9,8 @@ import { GeminiService } from '@core/gemini/gemini.service';
 import { ProductsService } from '@modules/products/products.service';
 import { TelegramService } from '@modules/telegram/telegram.service';
 import { EncryptionService } from '@core/encryption/encryption.service';
+import { OrdersService } from '@modules/orders/orders.service';
+import { AiResponseHandlerService } from './ai-response-handler.service';
 
 @Injectable()
 export class WebhookService {
@@ -23,7 +25,9 @@ export class WebhookService {
     private readonly geminiService: GeminiService,
     private readonly productsService: ProductsService,
     private readonly telegramService: TelegramService,
-    private readonly encryptionService:EncryptionService
+    private readonly encryptionService: EncryptionService,
+    private readonly ordersService: OrdersService,
+    private readonly aiResponseHandler: AiResponseHandlerService,
   ) {}
 
   async handleWebhook(
@@ -40,19 +44,61 @@ export class WebhookService {
       return { status: 'ok' };
     }
     const { bot, customer } = result;
-    const decyptedToken = this.encryptionService.decrypt(bot.token)
+    const decyptedToken = this.encryptionService.decrypt(bot.token);
     const isValid = await this.validateMessage(webhookData, bot);
-    if (!isValid) 
-      return
-    await this.messagesService._saveMessage(customer.id, webhookData.message?.text || '', 'USER');
-    const history = await this.messagesService._getCustomerLastMessages(customer.id, 10);
-    const aiResponse = await this.processWithAI(webhookData.message?.text || '',history,bot)
-    await this.telegramService.sendRequest(decyptedToken, 'sendMessage', {
-      chat_id: webhookData.message?.chat.id,
-      text:aiResponse,
-      parse_mode: 'HTML',
-    });
-    await this.messagesService._saveMessage(customer.id, aiResponse, 'BOT');
+    if (!isValid) return;
+    await this.messagesService._saveMessage(
+      customer.id,
+      webhookData.message?.text || '',
+      'USER',
+    );
+    const history = await this.messagesService._getCustomerLastMessages(
+      customer.id,
+      10,
+    );
+    const aiResponse = await this.processWithAI(
+      webhookData.message?.text || '',
+      history,
+      bot,
+      customer,
+    );
+
+    // Process AI response and handle any order intents
+    const processedResponse = await this.aiResponseHandler.processAiResponse(
+      aiResponse,
+      customer,
+      organizationId,
+    );
+
+    try {
+      const res = await this.telegramService.sendRequest(
+        decyptedToken,
+        'sendMessage',
+        {
+          chat_id: webhookData.message?.chat.id,
+          text: processedResponse.text,
+          parse_mode: 'HTML',
+        },
+      );
+
+      if (!res.ok) {
+        this.logger.error(
+          `Failed to send message to customer: ${res.description || 'Unknown error'}`,
+        );
+        // Don't throw here as it would break the webhook flow
+        // Just log the error and continue
+      }
+    } catch (error) {
+      this.logger.error(
+        `Telegram API error when sending message: ${error.message}`,
+      );
+      // Don't throw here as it would break the webhook flow
+    }
+    await this.messagesService._saveMessage(
+      customer.id,
+      processedResponse.text,
+      'BOT',
+    );
     return { status: 'ok' };
   }
 
@@ -141,29 +187,29 @@ export class WebhookService {
     return true;
   }
 
-  private async processWithAI(message: string, history: Message[], bot: Bot) {
+  private async processWithAI(
+    message: string,
+    history: Message[],
+    bot: Bot,
+    customer: Customer,
+  ) {
     // Get user's orders for context
-    // const userOrders = await this.ordersService.getOrdersByUser(
-    //   bot.organizationId,
-    // ); //todo
-    const productContext = await this.productsService._getProductsForAI(
-      bot.organizationId, //todo
+    const userOrders = await this.ordersService.getOrdersForAI(
+      bot.organizationId,
+      customer.id,
     );
+    const productContext = await this.productsService._getProductsForAI(
+      bot.organizationId,
+    );
+
     const aiResponse = await this.geminiService.generateResponse(
       message,
       history,
       productContext,
+      userOrders,
     );
-    // Handle order creation intent
-    // if (aiResponse.intent === 'CREATE_ORDER' && aiResponse.orderData) {
-    //   await this.handleOrderIntent(aiResponse.orderData, bot.organizationId);
-    // }
 
-    // // Handle order fetching intent
-    // if (aiResponse.intent === 'FETCH_ORDERS' && aiResponse.shouldFetchOrders) {
-    //   return await this.handleFetchOrdersIntent(bot.organizationId);
-    // }
-    return aiResponse.text;
+    return aiResponse;
   }
 
   private async cleanUpProcessedUpdates() {

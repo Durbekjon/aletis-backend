@@ -173,6 +173,12 @@ SPECIAL INTENTS:
 2. When customer asks about their orders, use:
 [INTENT:FETCH_ORDERS]
 
+3. When customer wants to cancel an order, use:
+[INTENT:CANCEL_ORDER]
+{
+  "orderId": "extracted order number or null if not specified"
+}
+
 IMPORTANT CONVERSATION RULES:
 - If customer has already agreed to order something, don't ask again - proceed with order details
 - If customer says "yes" to ordering, immediately create the order and confirm
@@ -221,6 +227,29 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
         intent: 'FETCH_ORDERS',
         shouldFetchOrders: true,
       };
+    }
+
+    // Look for cancel order intent marker
+    const cancelOrderMatch = aiText.match(
+      /\[INTENT:CANCEL_ORDER\]\s*(\{[\s\S]*?\})/,
+    );
+    if (cancelOrderMatch) {
+      try {
+        const orderData = JSON.parse(cancelOrderMatch[1]);
+        const responseText = aiText
+          .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*/, '')
+          .trim();
+
+        return {
+          text:
+            responseText ||
+            'I can help you cancel an order. Which order would you like to cancel?',
+          intent: 'CANCEL_ORDER',
+          orderData,
+        };
+      } catch (error) {
+        this.logger.warn('Failed to parse cancel order data from AI response');
+      }
     }
 
     return {

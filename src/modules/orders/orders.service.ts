@@ -1,268 +1,708 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../core/prisma/prisma.service';
-import { CacheService } from '../../core/cache/cache.service';
-import { CreateOrderDto } from './dto/create-order.dto';
-import type { Order } from '@prisma/client';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
+import { Prisma, OrderStatus } from '@prisma/client';
+import { PrismaService } from '@core/prisma/prisma.service';
+import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
+import { CreateOrderDto, OrderResponseDto, UpdateOrderStatusDto } from './dto';
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly cacheService: CacheService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async createOrder(
-    userId: number,
-    createOrderDto: CreateOrderDto,
-  ): Promise<Order> {
-    this.logger.log(`Creating order for user ${userId}`);
-
-    const order = await this.prisma.order.create({
-      data: {
-        organizationId: userId, // todo
-        customerName: createOrderDto.customerName,
-        customerContact: createOrderDto.customerContact,
-        customerAddress: createOrderDto.customerAddress,
-        details: createOrderDto.details,
-        status: 'PENDING',
-      },
+  /**
+   * Get the organization ID for a user
+   */
+  private async getUserOrganizationId(userId: number): Promise<number> {
+    const member = await this.prisma.member.findUnique({
+      where: { userId },
+      select: { organizationId: true },
     });
+    if (!member) {
+      throw new ForbiddenException('User is not a member of any organization');
+    }
+    return member.organizationId;
+  }
 
-    // Invalidate related cache entries
-    await this.cacheService.invalidatePattern(`dashboard:summary:${userId}`);
-    await this.cacheService.invalidatePattern(`orders:user:${userId}:*`);
-
-    this.logger.log(`Order created with ID: ${order.id}`);
+  /**
+   * Ensure the order belongs to the user's organization
+   */
+  private async ensureOrderOwnership(orderId: number, organizationId: number) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { organizationId: true },
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.organizationId !== organizationId) {
+      throw new ForbiddenException(
+        'Order does not belong to your organization',
+      );
+    }
     return order;
   }
 
-  async createOrderFromIntent(userId: number, orderData: any): Promise<Order> {
-    this.logger.log(
-      `Creating order from AI intent for user ${userId}:`,
-      orderData,
-    );
-
-    // Transform AI order data to our format
-    const createOrderDto: CreateOrderDto = {
-      customerName:
-        orderData.customerName !== 'Not provided'
-          ? orderData.customerName
-          : undefined,
-      customerContact:
-        orderData.customerContact !== 'Not provided'
-          ? orderData.customerContact
-          : undefined,
-      customerAddress:
-        orderData.customerAddress !== 'Not provided'
-          ? orderData.customerAddress
-          : undefined,
-      details: {
-        items: orderData.items,
-        notes: orderData.notes,
-        source: 'telegram_chat',
-        aiGenerated: true,
-        originalData: orderData,
-      },
-    };
-
-    return this.createOrder(userId, createOrderDto);
-  }
-
-  async getOrdersByUser(userId: number): Promise<Order[]> {
-    return this.prisma.order.findMany({
-      where: { organizationId: userId },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async getOrdersByCustomerContact(contact: string): Promise<Order[]> {
-    return this.prisma.order.findMany({
-      where: {
-        customerContact: {
-          contains: contact,
-          mode: 'insensitive',
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async getOrdersWithPagination(
+  /**
+   * Create a new order
+   */
+  async createOrder(
     userId: number,
-    page: number = 1,
-    limit: number = 10,
-  ): Promise<{ orders: Order[]; total: number }> {
-    const cacheKey = this.cacheService.getUserOrdersKey(userId, page, limit);
+    dto: CreateOrderDto,
+  ): Promise<OrderResponseDto> {
+    const organizationId = await this.getUserOrganizationId(userId);
 
-    // Try to get from cache first
-    const cached = await this.cacheService.get<{
-      orders: Order[];
-      total: number;
-    }>(cacheKey);
-    if (cached) {
-      return cached;
+    // If customerId is provided, ensure it belongs to the organization
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: dto.customerId },
+        select: { organizationId: true },
+      });
+      if (!customer) {
+        throw new NotFoundException('Customer not found');
+      }
+      if (customer.organizationId !== organizationId) {
+        throw new ForbiddenException(
+          'Customer does not belong to your organization',
+        );
+      }
     }
 
-    const skip = (page - 1) * limit;
-
-    const [orders, total] = await Promise.all([
-      this.prisma.order.findMany({
-        where: { organizationId: userId }, // todo
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.order.count({
-        where: { organizationId: userId }, // todo
-      }),
-    ]);
-
-    const result = { orders, total };
-
-    // Cache the result for 2 minutes
-    await this.cacheService.set(cacheKey, result, 2 * 60 * 1000);
-
-    return result;
-  }
-
-  async getDashboardSummary(userId: number): Promise<{
-    totalOrders: number;
-    pendingOrders: number;
-    confirmedOrders: number;
-    shippedOrders: number;
-    deliveredOrders: number;
-    cancelledOrders: number;
-    last7DaysOrders: number;
-    last30DaysOrders: number;
-    averageOrderValue?: number;
-    topProducts?: Array<{ name: string; count: number }>;
-  }> {
-    const cacheKey = this.cacheService.getDashboardSummaryKey(userId);
-
-    // Try to get from cache first
-    const cached =
-      await this.cacheService.get<ReturnType<typeof this.getDashboardSummary>>(
-        cacheKey,
-      );
-    if (cached) {
-      return cached;
+    // If productIds are provided, ensure they belong to the organization
+    if (dto.productIds && dto.productIds.length > 0) {
+      const products = await this.prisma.product.findMany({
+        where: {
+          id: { in: dto.productIds },
+          organizationId,
+        },
+        select: { id: true },
+      });
+      if (products.length !== dto.productIds.length) {
+        throw new BadRequestException(
+          'One or more products do not belong to your organization',
+        );
+      }
     }
-    const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Use efficient database queries instead of fetching all orders
-    const [
-      totalOrders,
-      statusCounts,
-      last7DaysOrders,
-      last30DaysOrders,
-      ordersWithPrices,
-      topProductsData,
-    ] = await Promise.all([
-      // Total orders count
-      this.prisma.order.count({ where: { organizationId: userId } }), //todo
-
-      // Status counts in a single query
-      this.prisma.order.groupBy({
-        by: ['status'],
-        where: { organizationId: userId }, //todo
-        _count: { status: true },
-      }),
-
-      // Last 7 days orders
-      this.prisma.order.count({
-        where: {
-          organizationId: userId, //todo
-          createdAt: { gte: sevenDaysAgo },
-        },
-      }),
-
-      // Last 30 days orders
-      this.prisma.order.count({
-        where: {
-          organizationId: userId, // todo
-          createdAt: { gte: thirtyDaysAgo },
-        },
-      }),
-
-      // Orders with price data for average calculation
-      this.prisma.order.findMany({
-        where: {
-          organizationId: userId, //todo
-          details: {
-            path: ['price'],
-            not: 'null',
+    const order = await this.prisma.order.create({
+      data: {
+        status: dto.status || OrderStatus.NEW,
+        customerId: dto.customerId,
+        details: dto.details as Prisma.InputJsonValue,
+        organizationId,
+        quantity: dto.quantity || 1,
+        totalPrice: dto.totalPrice || 0,
+        products: dto.productIds
+          ? {
+              connect: dto.productIds.map((id) => ({ id })),
+            }
+          : undefined,
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
           },
         },
-        select: {
-          details: true,
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
         },
-      }),
-
-      // Top products analysis
-      this.prisma.order.findMany({
-        where: { organizationId: userId }, //todo,
-        select: {
-          details: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 100, // Limit to recent orders for performance
-      }),
-    ]);
-
-    // Process status counts
-    const statusMap = new Map(
-      statusCounts.map(({ status, _count }) => [status, _count.status]),
-    );
-
-    const pendingOrders = statusMap.get('PENDING') || 0;
-    const confirmedOrders = statusMap.get('CONFIRMED') || 0;
-    const shippedOrders = statusMap.get('SHIPPED') || 0;
-    const deliveredOrders = statusMap.get('DELIVERED') || 0;
-    const cancelledOrders = statusMap.get('CANCELLED') || 0;
-
-    // Calculate average order value
-    let averageOrderValue: number | undefined;
-    if (ordersWithPrices.length > 0) {
-      const totalValue = ordersWithPrices.reduce((sum, order) => {
-        const details = order.details as any;
-        return sum + (details?.price || details?.total || 0);
-      }, 0);
-      averageOrderValue = totalValue / ordersWithPrices.length;
-    }
-
-    // Process top products
-    const productCounts: Record<string, number> = {};
-    topProductsData.forEach((order) => {
-      const details = order.details as any;
-      const items = details?.items || 'Unknown Product';
-      productCounts[items] = (productCounts[items] || 0) + 1;
+      },
     });
 
-    const topProducts = Object.entries(productCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([name, count]) => ({ name, count }));
+    this.logger.log(
+      `Order created: ${order.id} for organization: ${organizationId}`,
+    );
+    return this.mapOrderToResponse(order);
+  }
 
-    const result = {
-      totalOrders,
-      pendingOrders,
-      confirmedOrders,
-      shippedOrders,
-      deliveredOrders,
-      cancelledOrders,
-      last7DaysOrders,
-      last30DaysOrders,
-      averageOrderValue,
-      topProducts,
+  /**
+   * Get all orders with pagination and search
+   */
+  async getOrders(
+    userId: number,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponseDto<OrderResponseDto>> {
+    const organizationId = await this.getUserOrganizationId(userId);
+
+    // Build search filter
+    const searchFilter = pagination.search
+      ? {
+          OR: [
+            {
+              customer: {
+                name: {
+                  contains: pagination.search,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
+            },
+            {
+              id: {
+                equals: isNaN(Number(pagination.search))
+                  ? undefined
+                  : Number(pagination.search),
+              },
+            },
+            {
+              details: {
+                path: [],
+                string_contains: pagination.search,
+              },
+            },
+          ],
+        }
+      : {};
+
+    const whereClause = {
+      organizationId,
+      ...searchFilter,
     };
 
-    // Cache the result for 5 minutes
-    await this.cacheService.set(cacheKey, result, 5 * 60 * 1000);
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.order.findMany({
+        where: whereClause,
+        include: {
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              telegramId: true,
+            },
+          },
+          products: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              images: {
+                select: {
+                  id: true,
+                  key: true,
+                  originalName: true,
+                },
+              },
+            },
+          },
+        },
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: { createdAt: pagination.order },
+      }),
+      this.prisma.order.count({ where: whereClause }),
+    ]);
 
-    return result;
+    const mappedItems = items.map((order) => this.mapOrderToResponse(order));
+
+    return new PaginatedResponseDto(
+      mappedItems,
+      total,
+      pagination.page ?? 1,
+      pagination.limit ?? 20,
+    );
+  }
+
+  /**
+   * Get order by ID
+   */
+  async getOrderById(
+    userId: number,
+    orderId: number,
+  ): Promise<OrderResponseDto> {
+    const organizationId = await this.getUserOrganizationId(userId);
+    await this.ensureOrderOwnership(orderId, organizationId);
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return this.mapOrderToResponse(order);
+  }
+
+  /**
+   * Update order status
+   */
+  async updateOrderStatus(
+    userId: number,
+    orderId: number,
+    dto: UpdateOrderStatusDto,
+  ): Promise<OrderResponseDto> {
+    const organizationId = await this.getUserOrganizationId(userId);
+    await this.ensureOrderOwnership(orderId, organizationId);
+
+    const order = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: dto.status,
+        updatedAt: new Date(),
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.logger.log(`Order ${orderId} status updated to ${dto.status}`);
+    return this.mapOrderToResponse(order);
+  }
+
+  /**
+   * Delete order
+   */
+  async deleteOrder(
+    userId: number,
+    orderId: number,
+  ): Promise<{ success: boolean }> {
+    const organizationId = await this.getUserOrganizationId(userId);
+    await this.ensureOrderOwnership(orderId, organizationId);
+
+    await this.prisma.order.delete({
+      where: { id: orderId },
+    });
+
+    this.logger.log(`Order ${orderId} deleted`);
+    return { success: true };
+  }
+
+  /**
+   * Create order from webhook/AI data
+   */
+  async createOrderFromWebhook(
+    organizationId: number,
+    customerId: number,
+    orderData: any,
+  ): Promise<OrderResponseDto> {
+    const { customerName, customerContact, items, notes } = orderData;
+
+    // Extract customer details for storage in order.details
+    const customerDetails = {
+      phoneNumber: customerContact || 'Not provided',
+      name: customerName || 'Not provided',
+      location: 'Not provided', // Will be updated when customer provides it
+      items: items || [],
+      notes: notes || '',
+      createdAt: new Date().toISOString(),
+    };
+
+    const order = await this.prisma.order.create({
+      data: {
+        status: OrderStatus.NEW,
+        customerId,
+        details: customerDetails as Prisma.InputJsonValue,
+        organizationId,
+        quantity: 1, // Default quantity, can be updated
+        totalPrice: 0, // Will be calculated when products are assigned
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.logger.log(
+      `Order created from webhook: ${order.id} for customer: ${customerId}`,
+    );
+    return this.mapOrderToResponse(order);
+  }
+
+  /**
+   * Get orders for AI context
+   */
+  async getOrdersForAI(
+    organizationId: number,
+    customerId?: number,
+  ): Promise<any[]> {
+    const whereClause: Prisma.OrderWhereInput = {
+      organizationId,
+    };
+
+    if (customerId) {
+      whereClause.customerId = customerId;
+    }
+
+    const orders = await this.prisma.order.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        status: true,
+        details: true,
+        createdAt: true,
+        customer: {
+          select: {
+            name: true,
+            telegramId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10, // Limit to recent orders for AI context
+    });
+
+    return orders.map((order) => ({
+      id: order.id,
+      status: order.status,
+      details: order.details,
+      createdAt: order.createdAt,
+      customer: order.customer,
+    }));
+  }
+
+  /**
+   * Create order from AI response data
+   */
+  async createFromAIResponse(
+    aiResponse: any,
+    customer: any,
+    organizationId: number,
+  ): Promise<OrderResponseDto> {
+    const { customerName, customerContact, items, notes } = aiResponse;
+
+    // Extract customer details for storage in order.details
+    const customerDetails = {
+      phoneNumber: customerContact || 'Not provided',
+      name: customerName || customer.name || 'Not provided',
+      location: 'Not provided', // Will be updated when customer provides it
+      items: items || [],
+      notes: notes || '',
+      createdAt: new Date().toISOString(),
+      source: 'AI_INTENT',
+    };
+
+    const order = await this.prisma.order.create({
+      data: {
+        status: OrderStatus.NEW,
+        customerId: customer.id,
+        details: customerDetails as Prisma.InputJsonValue,
+        organizationId,
+        quantity: 1, // Default quantity, can be updated
+        totalPrice: 0, // Will be calculated when products are assigned
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.logger.log(
+      `Order created from AI response: ${order.id} for customer: ${customer.id}`,
+    );
+    return this.mapOrderToResponse(order);
+  }
+
+  /**
+   * Get orders for a specific customer
+   */
+  async getOrdersForCustomer(
+    customerId: number,
+    organizationId: number,
+    limit: number = 5,
+  ): Promise<OrderResponseDto[]> {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        customerId,
+        organizationId,
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return orders.map((order) => this.mapOrderToResponse(order));
+  }
+
+  /**
+   * Update order details (for AI-driven updates)
+   */
+  async updateOrderDetails(
+    orderId: number,
+    customerId: number,
+    organizationId: number,
+    updates: Partial<{
+      status: OrderStatus;
+      details: Record<string, any>;
+      quantity: number;
+      totalPrice: number;
+    }>,
+  ): Promise<OrderResponseDto> {
+    // Ensure order belongs to customer and organization
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        customerId,
+        organizationId,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(
+        'Order not found or does not belong to customer',
+      );
+    }
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        ...updates,
+        updatedAt: new Date(),
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.logger.log(`Order ${orderId} details updated via AI`);
+    return this.mapOrderToResponse(updatedOrder);
+  }
+
+  /**
+   * Cancel order (AI-driven cancellation)
+   */
+  async cancelOrder(
+    orderId: number,
+    customerId: number,
+    organizationId: number,
+  ): Promise<OrderResponseDto> {
+    // Ensure order belongs to customer and organization
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        customerId,
+        organizationId,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(
+        'Order not found or does not belong to customer',
+      );
+    }
+
+    // Only allow cancellation of NEW or PENDING orders
+    if (
+      order.status !== OrderStatus.NEW &&
+      order.status !== OrderStatus.PENDING
+    ) {
+      throw new BadRequestException(
+        `Cannot cancel order with status: ${order.status}`,
+      );
+    }
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: OrderStatus.CANCELLED,
+        updatedAt: new Date(),
+        details: {
+          ...(order.details as Record<string, any>),
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: 'AI_INTENT',
+        } as Prisma.InputJsonValue,
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            telegramId: true,
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.logger.log(`Order ${orderId} cancelled via AI`);
+    return this.mapOrderToResponse(updatedOrder);
+  }
+
+  /**
+   * Map Prisma order to response DTO
+   */
+  private mapOrderToResponse(order: any): OrderResponseDto {
+    return {
+      id: order.id,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      status: order.status,
+      customer: order.customer
+        ? {
+            id: order.customer.id,
+            name: order.customer.name,
+            username: order.customer.username,
+            telegramId: order.customer.telegramId,
+          }
+        : undefined,
+      details: order.details,
+      organizationId: order.organizationId,
+      quantity: order.quantity,
+      totalPrice: order.totalPrice,
+      products: order.products || [],
+    };
   }
 }

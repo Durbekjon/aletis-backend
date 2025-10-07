@@ -249,8 +249,16 @@ export class PostsService {
         media,
       });
 
-      if (!res.ok)
-        throw new ForbiddenException('Failed to send media group to Telegram');
+      if (!res.ok) {
+        if (res.error_code === 403) {
+          throw new ForbiddenException(
+            'Bot is not a member of the channel. Please add the bot to the channel first.',
+          );
+        }
+        throw new ForbiddenException(
+          `Failed to send media group to Telegram: ${res.description || 'Unknown error'}`,
+        );
+      }
 
       const first = Array.isArray(res.result) ? res.result[0] : undefined;
       telegramId = first?.message_id ? String(first.message_id) : null;
@@ -263,8 +271,16 @@ export class PostsService {
         parse_mode: 'HTML',
       });
 
-      if (!res.ok)
-        throw new ForbiddenException('Failed to send photo to Telegram');
+      if (!res.ok) {
+        if (res.error_code === 403) {
+          throw new ForbiddenException(
+            'Bot is not a member of the channel. Please add the bot to the channel first.',
+          );
+        }
+        throw new ForbiddenException(
+          `Failed to send photo to Telegram: ${res.description || 'Unknown error'}`,
+        );
+      }
 
       telegramId = String(res.result?.message_id ?? res.message_id ?? '');
       meta = res.result ?? res;
@@ -275,8 +291,16 @@ export class PostsService {
         parse_mode: 'HTML',
       });
 
-      if (!res.ok)
-        throw new ForbiddenException('Failed to send message to Telegram');
+      if (!res.ok) {
+        if (res.error_code === 403) {
+          throw new ForbiddenException(
+            'Bot is not a member of the channel. Please add the bot to the channel first.',
+          );
+        }
+        throw new ForbiddenException(
+          `Failed to send message to Telegram: ${res.description || 'Unknown error'}`,
+        );
+      }
 
       telegramId = String(res.result?.message_id ?? res.message_id ?? '');
       meta = res.result ?? res;
@@ -305,22 +329,55 @@ export class PostsService {
       throw new BadRequestException('Channel has no connected bot');
 
     const token = this.encryption.decrypt(post.channel.connectedBot.token);
-    await this.telegram
-      .sendRequest(token, 'editMessageCaption', {
+    try {
+      const res = await this.telegram.sendRequest(token, 'editMessageCaption', {
         chat_id: post.channel.telegramId,
         message_id: Number(post.telegramId),
         caption: post.content,
         parse_mode: 'HTML',
-      })
-      .catch(async () => {
-        // fallback to editMessageText for text-only posts
-        await this.telegram.sendRequest(token, 'editMessageText', {
+      });
+
+      if (!res.ok) {
+        if (res.error_code === 403) {
+          throw new ForbiddenException(
+            'Bot is not a member of the channel. Please add the bot to the channel first.',
+          );
+        }
+        throw new ForbiddenException(
+          `Failed to edit message caption: ${res.description || 'Unknown error'}`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+
+      // fallback to editMessageText for text-only posts
+      try {
+        const res = await this.telegram.sendRequest(token, 'editMessageText', {
           chat_id: post.channel.telegramId,
           message_id: Number(post.telegramId),
           text: post.content,
           parse_mode: 'HTML',
         });
-      });
+
+        if (!res.ok) {
+          if (res.error_code === 403) {
+            throw new ForbiddenException(
+              'Bot is not a member of the channel. Please add the bot to the channel first.',
+            );
+          }
+          throw new ForbiddenException(
+            `Failed to edit message text: ${res.description || 'Unknown error'}`,
+          );
+        }
+      } catch (fallbackError) {
+        if (fallbackError instanceof ForbiddenException) {
+          throw fallbackError;
+        }
+        throw new ForbiddenException('Failed to edit message on Telegram');
+      }
+    }
 
     return post;
   }

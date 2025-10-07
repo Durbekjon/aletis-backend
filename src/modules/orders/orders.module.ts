@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
-import { CoreModule } from '../../core/core.module';
-import { CacheModule } from '../../core/cache/cache.module';
-import { AuthModule } from '../auth/auth.module';
+import { PrismaModule } from '../../core/prisma/prisma.module';
 
 @Module({
-  imports: [CoreModule, CacheModule, AuthModule],
+  imports: [PrismaModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

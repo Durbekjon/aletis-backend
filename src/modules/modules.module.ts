@@ -13,6 +13,7 @@ import { CustomersModule } from '@customers/customers.module';
 import { WebhookModule } from '@webhook/webhook.module';
 import { MessagesModule } from './messages/messages.module';
 import { PostsModule } from './posts/posts.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { PostsModule } from './posts/posts.module';
     // OrdersModule,
     ChannelsModule,
     PostsModule,
+    OrdersModule,
   ],
 })
 export class ModulesModule {}
