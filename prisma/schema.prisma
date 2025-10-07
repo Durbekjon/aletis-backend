@@ -69,7 +69,7 @@ model Product {
   organization   Organization  @relation(fields: [organizationId], references: [id])
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt()
-
+  orders         Order[]       @relation("ordered_products")
   @@index([name])
   @@index([organizationId, createdAt])
   @@map("products")
@@ -223,7 +223,7 @@ model Customer {
   botId          Int
   bot            Bot          @relation(fields: [botId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
-
+  orders         Order[]
   @@unique([telegramId, organizationId, botId])
   @@index([telegramId])
   @@index([organizationId, createdAt])
@@ -247,22 +247,22 @@ model Order {
   id              Int          @id @default(autoincrement())
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
-  status          OrderStatus  @default(PENDING)
-  customerName    String?
-  customerContact String?
-  customerAddress String?
-  details         Json
+  status          OrderStatus  @default(NEW)
+  customerId      Int?
+  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  details         Json?
   organizationId  Int
   organization    Organization @relation(fields: [organizationId], references: [id])
+  quantity        Int          @default(1)
+  totalPrice      Float        @default(0)
+  products        Product[]    @relation("ordered_products")
 
-  @@index([organizationId, createdAt(sort: Desc)], name: "idx_orders_organization_created")
+  @@index([organizationId, status, createdAt(sort: Desc)], name: "idx_orders_org_status_created")
+  @@index([customerId], name: "idx_orders_customer_id")
   @@index([status], name: "idx_orders_status")
-  @@index([customerContact], name: "idx_orders_customer_contact")
-  @@index([organizationId, status], name: "idx_orders_organization_status")
-  @@index([createdAt(sort: Desc)], name: "idx_orders_created_at")
-  @@index([organizationId, createdAt(sort: Desc), status], name: "idx_orders_organization_created_status")
   @@map("orders")
 }
+
 
 model Channel {
   id             Int              @id @default(autoincrement())
@@ -340,6 +340,7 @@ enum SenderType {
 }
 
 enum OrderStatus {
+  NEW
   PENDING
   CONFIRMED
   SHIPPED

@@ -13,11 +13,30 @@ export class TelegramService {
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Telegram API error: ${response.status} - ${errorText}`);
+    // Normalize response so callers can handle specific Telegram error codes
+    const rawText = await response.text();
+    let parsed: any | undefined;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : undefined;
+    } catch {
+      // non-JSON response
     }
-    return response.json();
+
+    const normalized: any = {
+      // ok should reflect HTTP ok AND Telegram ok when present
+      ok: response.ok && (parsed?.ok ?? true),
+      status: response.status,
+      ...(parsed ?? {}),
+    };
+
+    if (!normalized.ok) {
+      // Ensure error_code/description are populated for consistent handling
+      if (!normalized.error_code) normalized.error_code = response.status;
+      if (!normalized.description)
+        normalized.description = rawText || 'Unknown error';
+    }
+
+    return normalized;
   }
 
   // async processUpdate(
