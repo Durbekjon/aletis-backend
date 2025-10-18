@@ -8,7 +8,14 @@ import { join } from 'path';
   imports: [
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public', 'uploads'),
-      serveRoot: '/public/uploads', // URL prefix
+      serveRoot: '/public/uploads',
+      serveStaticOptions: {
+        setHeaders: (res, path) => {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+          res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+        },
+      },
     }),
     ModulesModule,
     CoreModule,
