@@ -11,6 +11,10 @@ import { TelegramService } from '@modules/telegram/telegram.service';
 import { EncryptionService } from '@core/encryption/encryption.service';
 import { OrdersService } from '@modules/orders/orders.service';
 import { AiResponseHandlerService } from './ai-response-handler.service';
+import {
+  MessageBufferService,
+  FlushResult,
+} from '@core/message-buffer/message-buffer.service';
 
 @Injectable()
 export class WebhookService {
@@ -28,6 +32,7 @@ export class WebhookService {
     private readonly encryptionService: EncryptionService,
     private readonly ordersService: OrdersService,
     private readonly aiResponseHandler: AiResponseHandlerService,
+    private readonly messageBufferService: MessageBufferService,
   ) {}
 
   async handleWebhook(
@@ -48,62 +53,122 @@ export class WebhookService {
     const decyptedToken = this.encryptionService.decrypt(bot.token);
     const isValid = await this.validateMessage(webhookData, bot);
     if (!isValid) return;
+
+    // Get message content
+    const messageContent = webhookData.message?.text || '';
+
+    // Save individual message to database
     await this.messagesService._saveMessage(
       customer.id,
-      webhookData.message?.text || '',
+      messageContent,
       'USER',
       bot.id,
     );
-    const history = await this.messagesService._getCustomerLastMessages(
+
+    this.logger.log(
+      `Message received from customer ${customer.id}: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}"`,
+    );
+
+    // Add message to buffer with callback for when it's flushed
+    this.messageBufferService.addMessage(
       customer.id,
-      10,
-    );
-    console.log(history);
-    const aiResponse = await this.processWithAI(
-      webhookData.message?.text || '',
-      history,
-      bot,
-      customer,
-    );
-
-    // Process AI response and handle any order intents
-    const processedResponse = await this.aiResponseHandler.processAiResponse(
-      aiResponse,
-      customer,
+      bot.id,
       organizationId,
+      messageContent,
+      async (flushResult: FlushResult) => {
+        await this.processBufferedMessages(
+          flushResult,
+          bot,
+          customer,
+          decyptedToken,
+        );
+      },
     );
 
+    return { status: 'ok' };
+  }
+
+  /**
+   * Process buffered messages after buffer flush
+   * This is called by the MessageBufferService when the buffer is flushed
+   *
+   * @param flushResult - The result of flushing the buffer
+   * @param bot - The bot instance
+   * @param customer - The customer instance
+   * @param decryptedToken - The decrypted bot token
+   */
+  private async processBufferedMessages(
+    flushResult: FlushResult,
+    bot: Bot,
+    customer: Customer,
+    decryptedToken: string,
+  ): Promise<void> {
     try {
-      const res = await this.telegramService.sendRequest(
-        decyptedToken,
-        'sendMessage',
-        {
-          chat_id: webhookData.message?.chat.id,
-          text: processedResponse.text,
-          parse_mode: 'HTML',
-        },
+      this.logger.log(
+        `Processing buffered messages for customer ${customer.id}: ${flushResult.messageCount} messages merged`,
       );
 
-      if (!res.ok) {
-        this.logger.error(
-          `Failed to send message to customer: ${res.description || 'Unknown error'}`,
+      // Get conversation history (last 10 messages)
+      const history = await this.messagesService._getCustomerLastMessages(
+        customer.id,
+        10,
+      );
+
+      // Process merged message with AI
+      const aiResponse = await this.processWithAI(
+        flushResult.combinedMessage,
+        history,
+        bot,
+        customer,
+      );
+
+      // Process AI response and handle any order intents
+      const processedResponse = await this.aiResponseHandler.processAiResponse(
+        aiResponse,
+        customer,
+        flushResult.organizationId,
+      );
+
+      // Send response to Telegram
+      try {
+        const res = await this.telegramService.sendRequest(
+          decryptedToken,
+          'sendMessage',
+          {
+            chat_id: customer.telegramId,
+            text: processedResponse.text,
+            parse_mode: 'HTML',
+          },
         );
-        // Don't throw here as it would break the webhook flow
-        // Just log the error and continue
+
+        if (!res.ok) {
+          this.logger.error(
+            `Failed to send message to customer ${customer.id}: ${res.description || 'Unknown error'}`,
+          );
+        } else {
+          this.logger.log(
+            `AI response sent to customer ${customer.id}: "${processedResponse.text.substring(0, 50)}${processedResponse.text.length > 50 ? '...' : ''}"`,
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `Telegram API error when sending message to customer ${customer.id}: ${error.message}`,
+        );
       }
+
+      // Save bot response to database
+      await this.messagesService._saveMessage(
+        customer.id,
+        processedResponse.text,
+        'BOT',
+        bot.id,
+      );
     } catch (error) {
       this.logger.error(
-        `Telegram API error when sending message: ${error.message}`,
+        `Error processing buffered messages for customer ${customer.id}: ${error.message}`,
+        error.stack,
       );
-      // Don't throw here as it would break the webhook flow
     }
-    await this.messagesService._saveMessage(
-      customer.id,
-      processedResponse.text,
-      'BOT',
-      bot.id,
-    );
-    return { status: 'ok' };
   }
 
   private async getCustomerFromWebhook(
