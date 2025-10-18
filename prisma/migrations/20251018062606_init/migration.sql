@@ -2,6 +2,15 @@
 CREATE TYPE "public"."BUSINESS_CATEGORY" AS ENUM ('FASHION', 'ELECTRONICS', 'COSMETICS', 'SERVICES', 'FOOD', 'BOOKS', 'HOME', 'SPORTS', 'AUTOMOTIVE', 'OTHER');
 
 -- CreateEnum
+CREATE TYPE "public"."OnboardingStep" AS ENUM ('SELECT_CATEGORY', 'CONFIGURE_SCHEMA', 'ADD_FIRST_PRODUCT', 'CONNECT_BOT');
+
+-- CreateEnum
+CREATE TYPE "public"."OnboardingStatus" AS ENUM ('INCOMPLETE', 'COMPLETED');
+
+-- CreateEnum
+CREATE TYPE "public"."ProductStatus" AS ENUM ('DRAFT', 'ACTIVE', 'ARCHIVED');
+
+-- CreateEnum
 CREATE TYPE "public"."FieldType" AS ENUM ('TEXT', 'NUMBER', 'DATE', 'FILE', 'BOOLEAN', 'ENUM', 'IMAGE');
 
 -- CreateEnum
@@ -15,6 +24,9 @@ CREATE TYPE "public"."MemberStatus" AS ENUM ('INACTIVE', 'ACTIVE');
 
 -- CreateEnum
 CREATE TYPE "public"."MemberRole" AS ENUM ('ADMIN', 'SELLER');
+
+-- CreateEnum
+CREATE TYPE "public"."BotStatus" AS ENUM ('ACTIVE', 'INACTIVE');
 
 -- CreateEnum
 CREATE TYPE "public"."ConnectionStatus" AS ENUM ('PENDING', 'NOT_FOUND', 'NOT_ADMIN', 'NO_REQUIRED_PERMISSIONS', 'DONE', 'FAIL');
@@ -60,14 +72,33 @@ CREATE TABLE "public"."organizations" (
 );
 
 -- CreateTable
+CREATE TABLE "public"."onboarding_progress" (
+    "id" SERIAL NOT NULL,
+    "organizationId" INTEGER NOT NULL,
+    "percentage" INTEGER NOT NULL DEFAULT 20,
+    "isCategorySelected" BOOLEAN NOT NULL DEFAULT false,
+    "isSchemaConfigured" BOOLEAN NOT NULL DEFAULT false,
+    "isFirstProductAdded" BOOLEAN NOT NULL DEFAULT false,
+    "isBotConnected" BOOLEAN NOT NULL DEFAULT false,
+    "nextStep" "public"."OnboardingStep" NOT NULL DEFAULT 'SELECT_CATEGORY',
+    "status" "public"."OnboardingStatus" NOT NULL DEFAULT 'INCOMPLETE',
+
+    CONSTRAINT "onboarding_progress_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "public"."products" (
     "id" SERIAL NOT NULL,
     "name" TEXT NOT NULL,
     "price" DOUBLE PRECISION NOT NULL,
+    "quantity" INTEGER NOT NULL DEFAULT 1,
     "schemaId" INTEGER NOT NULL,
     "organizationId" INTEGER NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "status" "public"."ProductStatus" NOT NULL DEFAULT 'DRAFT',
+    "deletedAt" TIMESTAMP(3),
+    "isDeleted" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "products_pkey" PRIMARY KEY ("id")
 );
@@ -143,11 +174,14 @@ CREATE TABLE "public"."bots" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "token" TEXT NOT NULL,
-    "isEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "status" "public"."BotStatus" NOT NULL DEFAULT 'INACTIVE',
     "telegramId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "username" TEXT NOT NULL,
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
     "organizationId" INTEGER NOT NULL,
+    "activatedAt" TIMESTAMP(3),
+    "deactivatedAt" TIMESTAMP(3),
 
     CONSTRAINT "bots_pkey" PRIMARY KEY ("id")
 );
@@ -173,6 +207,7 @@ CREATE TABLE "public"."messages" (
     "sender" "public"."SenderType" NOT NULL,
     "content" TEXT NOT NULL,
     "customerId" INTEGER NOT NULL,
+    "botId" INTEGER NOT NULL,
 
     CONSTRAINT "messages_pkey" PRIMARY KEY ("id")
 );
@@ -238,7 +273,13 @@ CREATE TABLE "public"."_ordered_products" (
 CREATE UNIQUE INDEX "users_email_key" ON "public"."users"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "onboarding_progress_organizationId_key" ON "public"."onboarding_progress"("organizationId");
+
+-- CreateIndex
 CREATE INDEX "products_name_idx" ON "public"."products"("name");
+
+-- CreateIndex
+CREATE INDEX "products_isDeleted_idx" ON "public"."products"("isDeleted");
 
 -- CreateIndex
 CREATE INDEX "products_organizationId_createdAt_idx" ON "public"."products"("organizationId", "createdAt");
@@ -295,6 +336,9 @@ CREATE INDEX "customers_name_idx" ON "public"."customers"("name");
 CREATE UNIQUE INDEX "customers_telegramId_organizationId_botId_key" ON "public"."customers"("telegramId", "organizationId", "botId");
 
 -- CreateIndex
+CREATE INDEX "messages_botId_createdAt_idx" ON "public"."messages"("botId", "createdAt");
+
+-- CreateIndex
 CREATE INDEX "idx_orders_org_status_created" ON "public"."orders"("organizationId", "status", "createdAt" DESC);
 
 -- CreateIndex
@@ -326,6 +370,9 @@ CREATE INDEX "posts_telegramId_idx" ON "public"."posts"("telegramId");
 
 -- CreateIndex
 CREATE INDEX "_ordered_products_B_index" ON "public"."_ordered_products"("B");
+
+-- AddForeignKey
+ALTER TABLE "public"."onboarding_progress" ADD CONSTRAINT "onboarding_progress_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "public"."organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."products" ADD CONSTRAINT "products_schemaId_fkey" FOREIGN KEY ("schemaId") REFERENCES "public"."product_schemas"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -371,6 +418,9 @@ ALTER TABLE "public"."customers" ADD CONSTRAINT "customers_organizationId_fkey" 
 
 -- AddForeignKey
 ALTER TABLE "public"."messages" ADD CONSTRAINT "messages_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "public"."customers"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."messages" ADD CONSTRAINT "messages_botId_fkey" FOREIGN KEY ("botId") REFERENCES "public"."bots"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."orders" ADD CONSTRAINT "orders_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "public"."customers"("id") ON DELETE SET NULL ON UPDATE CASCADE;

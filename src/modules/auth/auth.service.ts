@@ -158,7 +158,7 @@ export class AuthService {
       where: { id: userId },
       select: { id: true, firstName: true, lastName: true, email: true },
     });
-
+    console.log(isNew)
     return { ...tokens, user: user!, isNew };
   }
 

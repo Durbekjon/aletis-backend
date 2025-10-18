@@ -27,6 +27,7 @@ import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
 import { PaginationDto } from '@/shared/dto';
 import { BotPaginatedResponseDto } from './dto/bot-pagination.dto';
+import { BotResponseDto } from './dto/bot-response.dto';
 
 @ApiTags('Telegram Bots')
 @ApiBearerAuth('bearer')
@@ -95,11 +96,15 @@ export class BotsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get bot details by ID' })
-  @ApiResponse({ status: 200, description: 'Bot details', type: Object })
+  @ApiResponse({
+    status: 200,
+    description: 'Bot details',
+    type: BotResponseDto,
+  })
   async getBotDetails(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) botId: number,
-  ): Promise<Bot> {
+  ): Promise<BotResponseDto> {
     return this.botsService.getBotDetails(Number(user.userId), botId);
   }
 
