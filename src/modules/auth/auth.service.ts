@@ -9,6 +9,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import crypto from 'node:crypto';
+import { JwtPayload } from './strategies/jwt.strategy';
 
 type Tokens = { accessToken: string; refreshToken: string };
 @Injectable()
@@ -158,7 +159,6 @@ export class AuthService {
       where: { id: userId },
       select: { id: true, firstName: true, lastName: true, email: true },
     });
-    console.log(isNew)
     return { ...tokens, user: user!, isNew };
   }
 
@@ -204,14 +204,14 @@ export class AuthService {
   }
 
   private async issueTokens(userId: number): Promise<Tokens> {
-    const payload = { userId };
+    const payload: JwtPayload = { userId };
     const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: this.getAccessExpiry(),
       secret: this.getAccessSecret(),
+      expiresIn: this.getAccessExpiry(),
     });
     const refreshToken = await this.jwtService.signAsync(payload, {
-      expiresIn: this.getRefreshExpiry(),
       secret: this.getRefreshSecret(),
+      expiresIn: this.getRefreshExpiry(),
     });
     return { accessToken, refreshToken };
   }
@@ -232,12 +232,19 @@ export class AuthService {
     );
   }
 
-  private getAccessExpiry(): string {
-    return this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m';
+  private getAccessExpiry(): number {
+    const FIFTEEN_MINUTES = 15 * 60 * 1000;
+    return Number(
+      this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
+        FIFTEEN_MINUTES,
+    );
   }
 
-  private getRefreshExpiry(): string {
-    return this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+  private getRefreshExpiry(): number {
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+    return Number(
+      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? SEVEN_DAYS,
+    );
   }
 
   private getSaltRounds(): number {

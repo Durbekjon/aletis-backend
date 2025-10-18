@@ -17,6 +17,7 @@ import {
 } from '@core/webhook-helper/webhook-helper.service';
 import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
 import { BotStatisticsResponseDto } from './dto/bot-response.dto';
+import { RedisService } from '@core/redis/redis.service';
 export interface TelegramBotInfo {
   id: string;
   is_bot: boolean;
@@ -31,11 +32,94 @@ export interface TelegramBotInfo {
 
 @Injectable()
 export class BotsService {
+  // Cache key patterns for consistent naming
+  private readonly CACHE_KEYS = {
+    BOT: (id: number) => `bot:${id}`,
+    BOTS_LIST: (orgId: number, page: number, limit: number, search?: string) =>
+      `bots:org:${orgId}:page:${page}:limit:${limit}${search ? `:search:${search}` : ''}`,
+    BOT_STATS: (id: number) => `bot:${id}:stats`,
+    BOT_DETAILS: (id: number) => `bot:${id}:details`,
+    ORG_BOTS: (orgId: number) => `org:${orgId}:bots`,
+  };
+
+  // TTL values in seconds
+  private readonly TTL = {
+    BOT: 300, // 5 minutes - bot data changes infrequently
+    BOTS_LIST: 180, // 3 minutes - list data changes more frequently
+    BOT_STATS: 60, // 1 minute - statistics change frequently
+    BOT_DETAILS: 300, // 5 minutes - details change infrequently
+    ORG_BOTS: 600, // 10 minutes - organization bot list
+  };
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
     private readonly webhookHelper: WebhookHelperService,
+    private readonly redis: RedisService,
   ) {}
+
+  // ==================== CACHE HELPER METHODS ====================
+
+  /**
+   * Generic cache get method with type safety
+   */
+  private async getFromCache<T>(key: string): Promise<T | null> {
+    try {
+      return await this.redis.get<T>(key);
+    } catch (error) {
+      console.warn(`Cache get failed for key ${key}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Generic cache set method with TTL
+   */
+  private async setCache<T>(key: string, value: T, ttl: number): Promise<void> {
+    try {
+      await this.redis.set(key, value, ttl);
+    } catch (error) {
+      console.warn(`Cache set failed for key ${key}:`, error);
+    }
+  }
+
+  /**
+   * Invalidate cache by key pattern
+   */
+  private async invalidateCache(pattern: string): Promise<void> {
+    try {
+      // Note: In production, you might want to use SCAN instead of KEYS for better performance
+      const keys = await this.redis.keys(pattern);
+      if (keys.length > 0) {
+        await this.redis.delMultiple(keys);
+      }
+    } catch (error) {
+      console.warn(`Cache invalidation failed for pattern ${pattern}:`, error);
+    }
+  }
+
+  /**
+   * Invalidate all bot-related caches for an organization
+   */
+  private async invalidateOrganizationBotCaches(
+    organizationId: number,
+  ): Promise<void> {
+    const patterns = [
+      `bots:org:${organizationId}:*`,
+      `org:${organizationId}:bots`,
+    ];
+
+    await Promise.all(patterns.map((pattern) => this.invalidateCache(pattern)));
+  }
+
+  /**
+   * Invalidate all caches for a specific bot
+   */
+  private async invalidateBotCaches(botId: number): Promise<void> {
+    const patterns = [`bot:${botId}*`];
+
+    await Promise.all(patterns.map((pattern) => this.invalidateCache(pattern)));
+  }
   /**
    * Creates a new bot
    * @param userId - The ID of the user creating the bot
@@ -66,6 +150,10 @@ export class BotsService {
         username: username,
       },
     });
+
+    // Invalidate organization bot caches since a new bot was created
+    await this.invalidateOrganizationBotCaches(organization.id);
+
     return bot;
   }
 
@@ -74,6 +162,23 @@ export class BotsService {
     paginationDto: PaginationDto,
   ): Promise<PaginatedResponseDto<any>> {
     const organization = await this.validateUser(userId);
+
+    // Create cache key for this specific query
+    const cacheKey = this.CACHE_KEYS.BOTS_LIST(
+      organization.id,
+      paginationDto.page ?? 1,
+      paginationDto.limit ?? 20,
+      paginationDto.search,
+    );
+
+    // Try to get from cache first
+    const cachedResult =
+      await this.getFromCache<PaginatedResponseDto<any>>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+
+    // If not in cache, fetch from database
     const searchFilter = paginationDto.search
       ? {
           OR: [
@@ -92,6 +197,7 @@ export class BotsService {
           ],
         }
       : {};
+
     const [bots, total] = await this.prisma.$transaction([
       this.prisma.bot.findMany({
         where: { organizationId: organization.id, ...searchFilter },
@@ -115,16 +221,32 @@ export class BotsService {
       }),
     );
 
-    return new PaginatedResponseDto<any>(
+    const result = new PaginatedResponseDto<any>(
       botsWithStatistics,
       total,
       paginationDto.page ?? 1,
       paginationDto.limit ?? 20,
     );
+
+    // Cache the result
+    await this.setCache(cacheKey, result, this.TTL.BOTS_LIST);
+
+    return result;
   }
 
   async getBotDetails(userId: number, botId: number): Promise<any> {
     const organization = await this.validateUser(userId);
+
+    // Create cache key for bot details
+    const cacheKey = this.CACHE_KEYS.BOT_DETAILS(botId);
+
+    // Try to get from cache first
+    const cachedResult = await this.getFromCache<any>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+
+    // If not in cache, fetch from database
     const bot = await this.prisma.bot.findUnique({
       where: { id: botId, organizationId: organization.id },
     });
@@ -135,10 +257,15 @@ export class BotsService {
     // Calculate and add statistics
     const statistics = await this.calculateBotStatistics(bot.id);
 
-    return {
+    const result = {
       ...bot,
       statistics,
     };
+
+    // Cache the result
+    await this.setCache(cacheKey, result, this.TTL.BOT_DETAILS);
+
+    return result;
   }
 
   async updateBot(
@@ -172,7 +299,7 @@ export class BotsService {
       dto.token,
     );
     const encryptedToken = this.encryption.encrypt(dto.token);
-    return await this.prisma.bot.update({
+    const updatedBot = await this.prisma.bot.update({
       where: { id: botId },
       data: {
         token: encryptedToken,
@@ -182,6 +309,14 @@ export class BotsService {
         username: username,
       },
     });
+
+    // Invalidate all caches related to this bot and organization
+    await Promise.all([
+      this.invalidateBotCaches(botId),
+      this.invalidateOrganizationBotCaches(organization.id),
+    ]);
+
+    return updatedBot;
   }
 
   async deleteBot(userId: number, botId: number): Promise<Bot> {
@@ -192,6 +327,13 @@ export class BotsService {
     if (!bot) {
       throw new NotFoundException('Bot not found');
     }
+
+    // Invalidate all caches related to this bot and organization
+    await Promise.all([
+      this.invalidateBotCaches(botId),
+      this.invalidateOrganizationBotCaches(organization.id),
+    ]);
+
     return bot;
   }
 
@@ -217,6 +359,12 @@ export class BotsService {
           activatedAt: new Date(),
         },
       });
+
+      // Invalidate caches since bot status changed
+      await Promise.all([
+        this.invalidateBotCaches(botId),
+        this.invalidateOrganizationBotCaches(organization.id),
+      ]);
     }
     return result;
   }
@@ -239,6 +387,12 @@ export class BotsService {
           deactivatedAt: new Date(),
         },
       });
+
+      // Invalidate caches since bot status changed
+      await Promise.all([
+        this.invalidateBotCaches(botId),
+        this.invalidateOrganizationBotCaches(organization.id),
+      ]);
     }
     return result;
   }
@@ -257,6 +411,16 @@ export class BotsService {
   async calculateBotStatistics(
     botId: number,
   ): Promise<BotStatisticsResponseDto> {
+    // Create cache key for bot statistics
+    const cacheKey = this.CACHE_KEYS.BOT_STATS(botId);
+
+    // Try to get from cache first
+    const cachedStats =
+      await this.getFromCache<BotStatisticsResponseDto>(cacheKey);
+    if (cachedStats) {
+      return cachedStats;
+    }
+
     const now = new Date();
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -343,12 +507,17 @@ export class BotsService {
 
     const lastActive = lastBotMessage?.createdAt.toISOString() || null;
 
-    return {
+    const result = {
       totalMessages,
       activeChats: activeChats.length,
       uptime,
       lastActive,
     };
+
+    // Cache the result with short TTL since statistics change frequently
+    await this.setCache(cacheKey, result, this.TTL.BOT_STATS);
+
+    return result;
   }
 
   private async validateBotByTelegramAPI(

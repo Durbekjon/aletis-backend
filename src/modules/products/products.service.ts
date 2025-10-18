@@ -17,12 +17,193 @@ import {
   ProductImageResponseDto,
 } from './dto';
 import { PaginationDto } from '../../shared/dto';
+import { RedisService } from '../../core/redis/redis.service';
 
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  // Cache key patterns for consistent naming
+  private readonly CACHE_KEYS = {
+    PRODUCT: (id: number) => `product:${id}`,
+    PRODUCTS_LIST: (
+      orgId: number,
+      page: number,
+      limit: number,
+      search?: string,
+      order?: string,
+    ) =>
+      `products:org:${orgId}:page:${page}:limit:${limit}${search ? `:search:${search}` : ''}${order ? `:order:${order}` : ''}`,
+    PRODUCT_DETAILS: (id: number) => `product:${id}:details`,
+    ORG_PRODUCTS: (orgId: number) => `org:${orgId}:products`,
+    SCHEMA_PRODUCTS: (schemaId: number) => `schema:${schemaId}:products`,
+    PRODUCT_LOCK: (id: number) => `product:${id}:lock`,
+  };
+
+  // TTL values in seconds
+  private readonly TTL = {
+    PRODUCT: 600, // 10 minutes - product data changes infrequently
+    PRODUCTS_LIST: 300, // 5 minutes - list data changes more frequently
+    PRODUCT_DETAILS: 600, // 10 minutes - details change infrequently
+    ORG_PRODUCTS: 900, // 15 minutes - organization product list
+    SCHEMA_PRODUCTS: 1200, // 20 minutes - schema-based product lists
+    LOCK: 30, // 30 seconds - lock timeout for cache stampede protection
+  };
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
+
+  // ==================== CACHE HELPER METHODS ====================
+
+  /**
+   * Generic cache get method with type safety and error handling
+   */
+  private async getFromCache<T>(key: string): Promise<T | null> {
+    try {
+      return await this.redis.get<T>(key);
+    } catch (error) {
+      this.logger.warn(`Cache get failed for key ${key}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Generic cache set method with TTL and error handling
+   */
+  private async setCache<T>(key: string, value: T, ttl: number): Promise<void> {
+    try {
+      await this.redis.set(key, value, ttl);
+    } catch (error) {
+      this.logger.warn(`Cache set failed for key ${key}:`, error);
+    }
+  }
+
+  /**
+   * Get or set cache with stampede protection
+   * Implements cache-aside pattern with double-checked locking
+   */
+  private async getOrSetCache<T>(
+    key: string,
+    ttl: number,
+    factory: () => Promise<T>,
+    lockKey?: string,
+  ): Promise<T> {
+    // Try to get from cache first
+    const cached = await this.getFromCache<T>(key);
+    if (cached !== null) {
+      return cached;
+    }
+
+    // If lock key provided, implement stampede protection
+    if (lockKey) {
+      const lockAcquired = await this.acquireLock(lockKey);
+      if (!lockAcquired) {
+        // Another process is building the cache, wait and retry
+        await this.sleep(100);
+        const retryCached = await this.getFromCache<T>(key);
+        if (retryCached !== null) {
+          return retryCached;
+        }
+      }
+    }
+
+    try {
+      // Generate the data
+      const data = await factory();
+
+      // Cache the result
+      await this.setCache(key, data, ttl);
+
+      return data;
+    } finally {
+      // Release lock if we acquired it
+      if (lockKey) {
+        await this.releaseLock(lockKey);
+      }
+    }
+  }
+
+  /**
+   * Acquire a distributed lock for cache stampede protection
+   */
+  private async acquireLock(lockKey: string): Promise<boolean> {
+    try {
+      // Use Redis SET with NX and PX for atomic lock acquisition
+      return await this.redis.setNx(lockKey, 'locked', this.TTL.LOCK);
+    } catch (error) {
+      this.logger.warn(`Lock acquisition failed for ${lockKey}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Release a distributed lock
+   */
+  private async releaseLock(lockKey: string): Promise<void> {
+    try {
+      await this.redis.del(lockKey);
+    } catch (error) {
+      this.logger.warn(`Lock release failed for ${lockKey}:`, error);
+    }
+  }
+
+  /**
+   * Sleep utility for retry logic
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Invalidate cache by key pattern
+   */
+  private async invalidateCache(pattern: string): Promise<void> {
+    try {
+      const keys = await this.redis.keys(pattern);
+      if (keys.length > 0) {
+        await this.redis.delMultiple(keys);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Cache invalidation failed for pattern ${pattern}:`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Invalidate all product-related caches for an organization
+   */
+  private async invalidateOrganizationProductCaches(
+    organizationId: number,
+  ): Promise<void> {
+    const patterns = [
+      `products:org:${organizationId}:*`,
+      `org:${organizationId}:products`,
+    ];
+
+    await Promise.all(patterns.map((pattern) => this.invalidateCache(pattern)));
+  }
+
+  /**
+   * Invalidate all caches for a specific product
+   */
+  private async invalidateProductCaches(productId: number): Promise<void> {
+    const patterns = [`product:${productId}*`];
+
+    await Promise.all(patterns.map((pattern) => this.invalidateCache(pattern)));
+  }
+
+  /**
+   * Invalidate schema-related product caches
+   */
+  private async invalidateSchemaProductCaches(schemaId: number): Promise<void> {
+    const patterns = [`schema:${schemaId}:products`];
+
+    await Promise.all(patterns.map((pattern) => this.invalidateCache(pattern)));
+  }
 
   /**
    * Validates field value based on field type and requirements
@@ -263,6 +444,12 @@ export class ProductsService {
 
       this.logger.log(`Product created successfully: ${result.product.id}`);
 
+      // Invalidate organization product caches since a new product was created
+      await this.invalidateOrganizationProductCaches(organizationId);
+
+      // Invalidate schema product caches if applicable
+      await this.invalidateSchemaProductCaches(schema.id);
+
       // Return the created product with full details
       return this.getProductById(result.product.id, userId);
     } catch (error) {
@@ -386,6 +573,13 @@ export class ProductsService {
 
       this.logger.log(`Product updated successfully: ${result.id}`);
 
+      // Invalidate all caches related to this product and organization
+      await Promise.all([
+        this.invalidateProductCaches(productId),
+        this.invalidateOrganizationProductCaches(organizationId),
+        this.invalidateSchemaProductCaches(existingProduct.schemaId),
+      ]);
+
       // Return the updated product with full details
       return this.getProductById(result.id, userId);
     } catch (error) {
@@ -421,10 +615,25 @@ export class ProductsService {
         );
       }
 
+      // Get product details before deletion for cache invalidation
+      const productToDelete = await this.prisma.product.findUnique({
+        where: { id: productId },
+        select: { schemaId: true },
+      });
+
       // Delete product (field values will be cascade deleted)
       await this.prisma.product.delete({
         where: { id: productId },
       });
+
+      // Invalidate all caches related to this product and organization
+      await Promise.all([
+        this.invalidateProductCaches(productId),
+        this.invalidateOrganizationProductCaches(organizationId),
+        productToDelete
+          ? this.invalidateSchemaProductCaches(productToDelete.schemaId)
+          : Promise.resolve(),
+      ]);
 
       this.logger.log(`Product deleted successfully: ${productId}`);
     } catch (error) {
@@ -449,53 +658,64 @@ export class ProductsService {
     try {
       const organizationId = await this.getUserOrganizationId(userId);
 
-      const product = await this.prisma.product.findFirst({
-        where: { id: productId, organizationId },
-        include: {
-          schema: true,
-          images: true,
-          fields: {
+      // Create cache key for product details
+      const cacheKey = this.CACHE_KEYS.PRODUCT_DETAILS(productId);
+      const lockKey = this.CACHE_KEYS.PRODUCT_LOCK(productId);
+
+      // Use getOrSetCache with stampede protection for individual products
+      return await this.getOrSetCache(
+        cacheKey,
+        this.TTL.PRODUCT_DETAILS,
+        async () => {
+          const product = await this.prisma.product.findFirst({
+            where: { id: productId, organizationId },
             include: {
-              field: true,
+              schema: true,
+              images: true,
+              fields: {
+                include: {
+                  field: true,
+                },
+              },
             },
-          },
+          });
+
+          if (!product) {
+            throw new NotFoundException(
+              'Product not found or does not belong to your organization',
+            );
+          }
+
+          // Transform the response
+          const transformedFields: FieldValueResponseDto[] = product.fields.map(
+            (fieldValue) =>
+              this.transformFieldValueResponse(fieldValue, fieldValue.field),
+          );
+
+          const transformedImages: ProductImageResponseDto[] =
+            product.images.map((image) => ({
+              id: image.id,
+              key: image.key,
+              originalName: image.originalName,
+              size: image.size,
+              mimeType: image.mimeType,
+            }));
+
+          return {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            schemaId: product.schemaId,
+            schemaName: product.schema.name,
+            organizationId: product.organizationId,
+            images: transformedImages,
+            fields: transformedFields,
+            createdAt: product.createdAt,
+            updatedAt: product.updatedAt,
+          };
         },
-      });
-
-      if (!product) {
-        throw new NotFoundException(
-          'Product not found or does not belong to your organization',
-        );
-      }
-
-      // Transform the response
-      const transformedFields: FieldValueResponseDto[] = product.fields.map(
-        (fieldValue) =>
-          this.transformFieldValueResponse(fieldValue, fieldValue.field),
+        lockKey, // Use lock key for stampede protection
       );
-
-      const transformedImages: ProductImageResponseDto[] = product.images.map(
-        (image) => ({
-          id: image.id,
-          key: image.key,
-          originalName: image.originalName,
-          size: image.size,
-          mimeType: image.mimeType,
-        }),
-      );
-
-      return {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        schemaId: product.schemaId,
-        schemaName: product.schema.name,
-        organizationId: product.organizationId,
-        images: transformedImages,
-        fields: transformedFields,
-        createdAt: product.createdAt,
-        updatedAt: product.updatedAt,
-      };
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -518,120 +738,138 @@ export class ProductsService {
     try {
       const organizationId = await this.getUserOrganizationId(userId);
       const { page, limit, search, order } = paginationDto;
-      const skip = paginationDto.skip;
-      const take = paginationDto.take;
 
-      // Build the where clause
-      const where: any = {
+      // Create cache key for this specific query
+      const cacheKey = this.CACHE_KEYS.PRODUCTS_LIST(
         organizationId,
-      };
-
-      // Add search filter if provided
-      if (search && search.trim()) {
-        const searchTerm = search.trim();
-        where.OR = [
-          {
-            name: {
-              contains: searchTerm,
-              mode: 'insensitive',
-            },
-          },
-          {
-            fields: {
-              some: {
-                OR: [
-                  {
-                    valueText: {
-                      contains: searchTerm,
-                      mode: 'insensitive',
-                    },
-                  },
-                  {
-                    valueJson: {
-                      path: ['$'],
-                      string_contains: searchTerm,
-                    },
-                  },
-                ],
-              },
-            },
-          },
-        ];
-      }
-
-      // Build the orderBy clause
-      const orderBy = {
-        createdAt: order,
-      };
-
-      // Execute queries in parallel for better performance
-      const [products, total] = await Promise.all([
-        this.prisma.product.findMany({
-          where,
-          orderBy,
-          skip,
-          take,
-          include: {
-            schema: true,
-            images: {
-              select: {
-                id: true,
-                key: true,
-              },
-            },
-            fields: {
-              include: {
-                field: true,
-              },
-            },
-          },
-        }),
-        this.prisma.product.count({
-          where,
-        }),
-      ]);
-
-      // Transform the response
-      const transformedProducts: ProductResponseDto[] = products.map(
-        (product) => {
-          const transformedFields: FieldValueResponseDto[] = product.fields.map(
-            (fieldValue) =>
-              this.transformFieldValueResponse(fieldValue, fieldValue.field),
-          );
-
-          const transformedImages: ProductImageResponseDto[] =
-            product.images.map((image) => ({
-              id: image.id,
-              key: image.key,
-              // originalName: image.originalName,
-              // size: image.size,
-              // mimeType: image.mimeType,
-            }));
-
-          return {
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            schemaId: product.schemaId,
-            schemaName: product.schema.name,
-            organizationId: product.organizationId,
-            images: transformedImages,
-            fields: transformedFields,
-            createdAt: product.createdAt,
-            updatedAt: product.updatedAt,
-          };
-        },
-      );
-
-      this.logger.log(
-        `Retrieved ${products.length} products for organization ${organizationId} (page ${page}, total: ${total})`,
-      );
-
-      return new ProductPaginatedResponseDto(
-        transformedProducts,
-        total,
         page || 1,
         limit || 20,
+        search,
+        order,
+      );
+
+      // Use getOrSetCache with stampede protection
+      return await this.getOrSetCache(
+        cacheKey,
+        this.TTL.PRODUCTS_LIST,
+        async () => {
+          const skip = paginationDto.skip;
+          const take = paginationDto.take;
+
+          // Build the where clause
+          const where: any = {
+            organizationId,
+          };
+
+          // Add search filter if provided
+          if (search && search.trim()) {
+            const searchTerm = search.trim();
+            where.OR = [
+              {
+                name: {
+                  contains: searchTerm,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                fields: {
+                  some: {
+                    OR: [
+                      {
+                        valueText: {
+                          contains: searchTerm,
+                          mode: 'insensitive',
+                        },
+                      },
+                      {
+                        valueJson: {
+                          path: ['$'],
+                          string_contains: searchTerm,
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ];
+          }
+
+          // Build the orderBy clause
+          const orderBy = {
+            createdAt: order,
+          };
+
+          // Execute queries in parallel for better performance
+          const [products, total] = await Promise.all([
+            this.prisma.product.findMany({
+              where,
+              orderBy,
+              skip,
+              take,
+              include: {
+                schema: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                  },
+                },
+                fields: {
+                  include: {
+                    field: true,
+                  },
+                },
+              },
+            }),
+            this.prisma.product.count({
+              where,
+            }),
+          ]);
+
+          // Transform the response
+          const transformedProducts: ProductResponseDto[] = products.map(
+            (product) => {
+              const transformedFields: FieldValueResponseDto[] =
+                product.fields.map((fieldValue) =>
+                  this.transformFieldValueResponse(
+                    fieldValue,
+                    fieldValue.field,
+                  ),
+                );
+
+              const transformedImages: ProductImageResponseDto[] =
+                product.images.map((image) => ({
+                  id: image.id,
+                  key: image.key,
+                }));
+
+              return {
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                schemaId: product.schemaId,
+                schemaName: product.schema.name,
+                organizationId: product.organizationId,
+                images: transformedImages,
+                fields: transformedFields,
+                createdAt: product.createdAt,
+                updatedAt: product.updatedAt,
+              };
+            },
+          );
+
+          this.logger.log(
+            `Retrieved ${products.length} products for organization ${organizationId} (page ${page}, total: ${total})`,
+          );
+
+          return new ProductPaginatedResponseDto(
+            transformedProducts,
+            total,
+            page || 1,
+            limit || 20,
+          );
+        },
+        // No lock key needed for list queries as they're less prone to stampede
       );
     } catch (error) {
       this.logger.error(
@@ -658,7 +896,7 @@ export class ProductsService {
       // Check if all products exist and belong to user's organization
       const products = await this.prisma.product.findMany({
         where: { id: { in: productIds }, organizationId },
-        select: { id: true },
+        select: { id: true, schemaId: true },
       });
 
       if (products.length !== productIds.length) {
@@ -669,6 +907,9 @@ export class ProductsService {
         );
       }
 
+      // Get unique schema IDs for cache invalidation
+      const schemaIds = [...new Set(products.map((p) => p.schemaId))];
+
       // Delete products in a transaction
       await this.prisma.$transaction(
         productIds.map((id) =>
@@ -677,6 +918,18 @@ export class ProductsService {
           }),
         ),
       );
+
+      // Invalidate all caches related to deleted products and organization
+      await Promise.all([
+        // Invalidate individual product caches
+        ...productIds.map((id) => this.invalidateProductCaches(id)),
+        // Invalidate organization product caches
+        this.invalidateOrganizationProductCaches(organizationId),
+        // Invalidate schema product caches
+        ...schemaIds.map((schemaId) =>
+          this.invalidateSchemaProductCaches(schemaId),
+        ),
+      ]);
 
       this.logger.log(`Successfully deleted ${products.length} products`);
     } catch (error) {

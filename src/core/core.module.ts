@@ -7,6 +7,7 @@ import { SecurityModule } from './security/security.module';
 import { LoggingModule } from './logging/logging.module';
 import { WebhookHelperModule } from './webhook-helper/webhook-helper.module';
 import { MessageBufferModule } from './message-buffer/message-buffer.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { MessageBufferModule } from './message-buffer/message-buffer.module';
     LoggingModule,
     WebhookHelperModule,
     MessageBufferModule,
+    RedisModule,
   ],
   providers: [EncryptionService, GeminiService, RetryService],
   exports: [
