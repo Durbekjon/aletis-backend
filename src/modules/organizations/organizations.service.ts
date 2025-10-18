@@ -7,7 +7,13 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
-import { Organization, MemberRole, MemberStatus } from '@prisma/client';
+import {
+  Organization,
+  MemberRole,
+  MemberStatus,
+  OnboardingStatus,
+  OnboardingStep,
+} from '@prisma/client';
 
 @Injectable()
 export class OrganizationsService {
@@ -34,6 +40,13 @@ export class OrganizationsService {
             userId,
             role: 'ADMIN' as MemberRole,
             status: 'ACTIVE' as MemberStatus,
+          },
+        },
+        onboardingProgress: {
+          create: {
+            percentage: 20,
+            status: OnboardingStatus.INCOMPLETE,
+            nextStep: dto.category ? OnboardingStep.SELECT_CATEGORY : OnboardingStep.CONFIGURE_SCHEMA,
           },
         },
       },

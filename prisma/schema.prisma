@@ -25,20 +25,21 @@ model User {
 }
 
 model Organization {
-  id          Int               @id @default(autoincrement())
-  name        String            @default("Untitled")
-  description String?
-  category    BUSINESS_CATEGORY @default(OTHER)
-  bots        Bot[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  channels    Channel[]
-  members     Member[]
-  products    Product[]
-  orders      Order[]
-  schema      ProductSchema?
-  files       File[]
-  customers   Customer[]
+  id                 Int                 @id @default(autoincrement())
+  name               String              @default("Untitled")
+  description        String?
+  category           BUSINESS_CATEGORY   @default(OTHER)
+  bots               Bot[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  channels           Channel[]
+  members            Member[]
+  products           Product[]
+  orders             Order[]
+  schema             ProductSchema?
+  files              File[]
+  customers          Customer[]
+  onboardingProgress OnboardingProgress?
 
   @@map("organizations")
 }
@@ -56,12 +57,40 @@ enum BUSINESS_CATEGORY {
   OTHER
 }
 
+model OnboardingProgress {
+  id                  Int              @id @default(autoincrement())
+  organizationId      Int              @unique
+  organization        Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  percentage          Int              @default(20) 
+  isCategorySelected  Boolean          @default(false)
+  isSchemaConfigured  Boolean          @default(false)
+  isFirstProductAdded Boolean          @default(false)
+  isBotConnected      Boolean          @default(false)
+  nextStep            OnboardingStep   @default(SELECT_CATEGORY)
+  status              OnboardingStatus @default(INCOMPLETE)
+
+  @@map("onboarding_progress")
+}
+
+enum OnboardingStep {
+  SELECT_CATEGORY
+  CONFIGURE_SCHEMA
+  ADD_FIRST_PRODUCT
+  CONNECT_BOT
+}
+
+enum OnboardingStatus {
+  INCOMPLETE
+  COMPLETED
+}
+
 model Product {
   id             Int           @id @default(autoincrement())
   name           String
   price          Float
   images         File[]
   posts          Post[]
+  quantity       Int           @default(1)
   schemaId       Int
   schema         ProductSchema @relation(fields: [schemaId], references: [id])
   fields         FieldValue[]
@@ -70,9 +99,20 @@ model Product {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt()
   orders         Order[]       @relation("ordered_products")
+  status         ProductStatus @default(DRAFT)
+  deletedAt      DateTime?
+  isDeleted      Boolean       @default(false)
+
   @@index([name])
+  @@index([isDeleted])
   @@index([organizationId, createdAt])
   @@map("products")
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
 }
 
 model ProductSchema {
@@ -197,18 +237,27 @@ model Bot {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   token          String       @unique
-  isEnabled      Boolean      @default(true)
+  status         BotStatus    @default(INACTIVE)
   telegramId     String
   name           String
   username       String
+  isDefault      Boolean      @default(false)
   organizationId Int
   organization   Organization @relation(fields: [organizationId], references: [id])
   customers      Customer[]
   channels       Channel[]
+  messages       Message[]    // yangi qo‘shilgan (1:N)
+  activatedAt    DateTime?
+  deactivatedAt  DateTime?
 
   @@index([organizationId, name])
   @@index([organizationId, username])
   @@map("bots")
+}
+
+enum BotStatus {
+  ACTIVE
+  INACTIVE
 }
 
 model Customer {
@@ -224,6 +273,7 @@ model Customer {
   bot            Bot          @relation(fields: [botId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
   orders         Order[]
+
   @@unique([telegramId, organizationId, botId])
   @@index([telegramId])
   @@index([organizationId, createdAt])
@@ -239,30 +289,32 @@ model Message {
   content    String
   customerId Int
   customer   Customer   @relation(fields: [customerId], references: [id])
+  botId      Int
+  bot        Bot        @relation(fields: [botId], references: [id])
 
+  @@index([botId, createdAt])
   @@map("messages")
 }
 
 model Order {
-  id              Int          @id @default(autoincrement())
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  status          OrderStatus  @default(NEW)
-  customerId      Int?
-  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  details         Json?
-  organizationId  Int
-  organization    Organization @relation(fields: [organizationId], references: [id])
-  quantity        Int          @default(1)
-  totalPrice      Float        @default(0)
-  products        Product[]    @relation("ordered_products")
+  id             Int          @id @default(autoincrement())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  status         OrderStatus  @default(NEW)
+  customerId     Int?
+  customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  details        Json?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  quantity       Int          @default(1)
+  totalPrice     Float        @default(0)
+  products       Product[]    @relation("ordered_products")
 
   @@index([organizationId, status, createdAt(sort: Desc)], name: "idx_orders_org_status_created")
   @@index([customerId], name: "idx_orders_customer_id")
   @@index([status], name: "idx_orders_status")
   @@map("orders")
 }
-
 
 model Channel {
   id             Int              @id @default(autoincrement())

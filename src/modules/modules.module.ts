@@ -14,6 +14,7 @@ import { WebhookModule } from '@webhook/webhook.module';
 import { MessagesModule } from './messages/messages.module';
 import { PostsModule } from './posts/posts.module';
 import { OrdersModule } from './orders/orders.module';
+import { OnboardingProgressModule } from './onboarding-progress/onboarding-progress.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { OrdersModule } from './orders/orders.module';
     ChannelsModule,
     PostsModule,
     OrdersModule,
+    OnboardingProgressModule,
   ],
 })
 export class ModulesModule {}

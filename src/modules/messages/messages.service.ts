@@ -21,9 +21,10 @@ export class MessagesService {
     customerId: number,
     content: string,
     sender: 'USER' | 'BOT',
+    botId: number,
   ): Promise<Message> {
     return this.prisma.message.create({
-      data: { customerId, content, sender }
+      data: { customerId, content, sender, botId },
     });
   }
 }

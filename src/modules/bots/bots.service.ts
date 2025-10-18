@@ -1,6 +1,13 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@core/prisma/prisma.service';
-import { Bot, MemberRole, Organization, Prisma } from '@prisma/client';
+import {
+  Bot,
+  BotStatus,
+  MemberRole,
+  Organization,
+  Prisma,
+  SenderType,
+} from '@prisma/client';
 import { CreateBotDto } from './dto/create-bot.dto';
 import { UpdateBotDto } from './dto/update-bot.dto';
 import { EncryptionService } from '@core/encryption/encryption.service';
@@ -9,6 +16,7 @@ import {
   WebhookHelperService,
 } from '@core/webhook-helper/webhook-helper.service';
 import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
+import { BotStatisticsResponseDto } from './dto/bot-response.dto';
 export interface TelegramBotInfo {
   id: string;
   is_bot: boolean;
@@ -40,12 +48,20 @@ export class BotsService {
       dto.token,
     );
     const encryptedToken = this.encryption.encrypt(dto.token);
+    let botsCount = await this.prisma.bot.count({
+      where: { organizationId: organization.id, isDefault: true },
+    });
+    let isDefault = false;
+    if (botsCount === 0) {
+      isDefault = true;
+    }
     const bot = await this.prisma.bot.create({
       data: {
         token: encryptedToken,
         organizationId: organization.id,
-        isEnabled: false,
+        status: BotStatus.INACTIVE,
         telegramId: id,
+        isDefault: isDefault,
         name: first_name,
         username: username,
       },
@@ -56,7 +72,7 @@ export class BotsService {
   async getBots(
     userId: number,
     paginationDto: PaginationDto,
-  ): Promise<PaginatedResponseDto<Bot>> {
+  ): Promise<PaginatedResponseDto<any>> {
     const organization = await this.validateUser(userId);
     const searchFilter = paginationDto.search
       ? {
@@ -87,15 +103,27 @@ export class BotsService {
         where: { organizationId: organization.id, ...searchFilter },
       }),
     ]);
-    return new PaginatedResponseDto<Bot>(
-      bots,
+
+    // Calculate statistics for each bot
+    const botsWithStatistics = await Promise.all(
+      bots.map(async (bot) => {
+        const statistics = await this.calculateBotStatistics(bot.id);
+        return {
+          ...bot,
+          statistics,
+        };
+      }),
+    );
+
+    return new PaginatedResponseDto<any>(
+      botsWithStatistics,
       total,
       paginationDto.page ?? 1,
       paginationDto.limit ?? 20,
     );
   }
 
-  async getBotDetails(userId: number, botId: number): Promise<Bot> {
+  async getBotDetails(userId: number, botId: number): Promise<any> {
     const organization = await this.validateUser(userId);
     const bot = await this.prisma.bot.findUnique({
       where: { id: botId, organizationId: organization.id },
@@ -103,7 +131,14 @@ export class BotsService {
     if (!bot) {
       throw new NotFoundException('Bot not found');
     }
-    return bot;
+
+    // Calculate and add statistics
+    const statistics = await this.calculateBotStatistics(bot.id);
+
+    return {
+      ...bot,
+      statistics,
+    };
   }
 
   async updateBot(
@@ -118,7 +153,18 @@ export class BotsService {
     if (!bot) {
       throw new NotFoundException('Bot not found');
     }
-
+    if (dto.isDefault !== undefined) {
+      await Promise.all([
+        this.prisma.bot.updateMany({
+          where: { organizationId: organization.id, isDefault: true },
+          data: { isDefault: false },
+        }),
+        this.prisma.bot.update({
+          where: { id: botId },
+          data: { isDefault: dto.isDefault },
+        }),
+      ]);
+    }
     const decryptedToken = this.encryption.decrypt(bot.token);
     await this.webhookHelper.deleteWebhook(decryptedToken);
 
@@ -130,7 +176,7 @@ export class BotsService {
       where: { id: botId },
       data: {
         token: encryptedToken,
-        isEnabled: bot.isEnabled,
+        status: bot.status,
         telegramId: id,
         name: first_name,
         username: username,
@@ -166,7 +212,10 @@ export class BotsService {
     if (result.isOK) {
       await this.prisma.bot.update({
         where: { id: botId },
-        data: { isEnabled: true },
+        data: {
+          status: BotStatus.ACTIVE,
+          activatedAt: new Date(),
+        },
       });
     }
     return result;
@@ -185,7 +234,10 @@ export class BotsService {
     if (result.isOK) {
       await this.prisma.bot.update({
         where: { id: botId },
-        data: { isEnabled: false },
+        data: {
+          status: BotStatus.INACTIVE,
+          deactivatedAt: new Date(),
+        },
       });
     }
     return result;
@@ -195,6 +247,108 @@ export class BotsService {
     return this.prisma.bot.findUnique({
       where: { id: botId, organizationId },
     });
+  }
+
+  /**
+   * Calculate bot statistics including total messages, active chats, uptime, and last active time
+   * @param botId - The bot ID to calculate statistics for
+   * @returns BotStatisticsResponseDto with calculated statistics
+   */
+  async calculateBotStatistics(
+    botId: number,
+  ): Promise<BotStatisticsResponseDto> {
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    // Get bot details
+    const bot = await this.prisma.bot.findUnique({
+      where: { id: botId },
+      select: { status: true, activatedAt: true, deactivatedAt: true },
+    });
+
+    if (!bot) {
+      throw new NotFoundException('Bot not found');
+    }
+
+    // Calculate total messages
+    const totalMessages = await this.prisma.message.count({
+      where: { botId, sender: SenderType.BOT },
+    });
+
+    // Calculate active chats (unique customers who sent or received messages in last 24 hours)
+    const activeChats = await this.prisma.message.findMany({
+      where: {
+        botId,
+        createdAt: {
+          gte: twentyFourHoursAgo,
+        },
+      },
+      select: {
+        customerId: true,
+      },
+      distinct: ['customerId'],
+    });
+
+    // Calculate uptime
+    let uptime = '0 hours';
+    if (bot.status === BotStatus.ACTIVE && bot.activatedAt) {
+      const uptimeMs = now.getTime() - bot.activatedAt.getTime();
+      const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
+      const uptimeMinutes = Math.floor(
+        (uptimeMs % (1000 * 60 * 60)) / (1000 * 60),
+      );
+
+      if (uptimeHours > 0) {
+        uptime = `${uptimeHours} hour${uptimeHours > 1 ? 's' : ''}`;
+        if (uptimeMinutes > 0) {
+          uptime += ` ${uptimeMinutes} minute${uptimeMinutes > 1 ? 's' : ''}`;
+        }
+      } else {
+        uptime = `${uptimeMinutes} minute${uptimeMinutes > 1 ? 's' : ''}`;
+      }
+    } else if (
+      bot.status === BotStatus.INACTIVE &&
+      bot.activatedAt &&
+      bot.deactivatedAt
+    ) {
+      const uptimeMs = bot.deactivatedAt.getTime() - bot.activatedAt.getTime();
+      const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
+      const uptimeMinutes = Math.floor(
+        (uptimeMs % (1000 * 60 * 60)) / (1000 * 60),
+      );
+
+      if (uptimeHours > 0) {
+        uptime = `${uptimeHours} hour${uptimeHours > 1 ? 's' : ''}`;
+        if (uptimeMinutes > 0) {
+          uptime += ` ${uptimeMinutes} minute${uptimeMinutes > 1 ? 's' : ''}`;
+        }
+      } else {
+        uptime = `${uptimeMinutes} minute${uptimeMinutes > 1 ? 's' : ''}`;
+      }
+    }
+
+    // Get last active time (latest message where sender = 'BOT')
+    const lastBotMessage = await this.prisma.message.findFirst({
+      where: {
+        botId,
+        sender: 'BOT',
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        createdAt: true,
+      },
+    });
+
+    const lastActive = lastBotMessage?.createdAt.toISOString() || null;
+
+    return {
+      totalMessages,
+      activeChats: activeChats.length,
+      uptime,
+      lastActive,
+    };
   }
 
   private async validateBotByTelegramAPI(

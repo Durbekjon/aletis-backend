@@ -40,6 +40,7 @@ export class WebhookService {
       botId,
       organizationId,
     );
+    console.log(result);
     if (!result) {
       return { status: 'ok' };
     }
@@ -51,11 +52,13 @@ export class WebhookService {
       customer.id,
       webhookData.message?.text || '',
       'USER',
+      bot.id,
     );
     const history = await this.messagesService._getCustomerLastMessages(
       customer.id,
       10,
     );
+    console.log(history);
     const aiResponse = await this.processWithAI(
       webhookData.message?.text || '',
       history,
@@ -98,6 +101,7 @@ export class WebhookService {
       customer.id,
       processedResponse.text,
       'BOT',
+      bot.id,
     );
     return { status: 'ok' };
   }
