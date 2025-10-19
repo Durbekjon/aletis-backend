@@ -17,11 +17,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Debug secrets
-        run: |
-          echo "HOST is: ${{ secrets.SERVER_HOST }}"
-          echo "USER is: ${{ secrets.SERVER_USER }}"
-          echo "KEY length: $(echo "${{ secrets.SERVER_SSH_KEY }}" | wc -c)"
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
