@@ -4,8 +4,8 @@
 //   BadRequestException,
 //   Logger,
 // } from '@nestjs/common';
-// import { PrismaService } from '../../core/prisma/prisma.service';
-// import { EncryptionService } from '../../core/encryption/encryption.service';
+// import { PrismaService } from '@/core/prisma/prisma.service';
+// import { EncryptionService } from '@/core/encryption/encryption.service';
 // import { ConnectBotDto } from './dto/connect-bot.dto';
 // import type { Bot } from '@prisma/client';
 // import { ConfigService } from '@nestjs/config';

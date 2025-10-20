@@ -8,9 +8,11 @@ import {
   IsInt,
   Min,
   ArrayMaxSize,
+  IsEnum,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Currency } from '@prisma/client';
 
 export class CreateFieldValueDto {
   @ApiProperty({
@@ -68,6 +70,15 @@ export class CreateProductDto {
   @IsNotEmpty()
   @Min(1)
   quantity: number = 1;
+
+  @ApiProperty({
+    description: 'The currency of the product',
+    example: Currency.USD,
+  })
+  @IsString()
+  @IsNotEmpty()
+  @IsEnum(Currency)
+  currency: Currency = Currency.USD;
 
   @ApiPropertyOptional({
     description: 'Array of file IDs for product images',

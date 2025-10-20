@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from '../../core/prisma/prisma.service';
+import { PrismaService } from '@/core/prisma/prisma.service';
 import { FieldType, ProductStatus } from '@prisma/client';
 import {
   CreateProductDto,
@@ -16,8 +16,9 @@ import {
   FieldValueResponseDto,
   ProductImageResponseDto,
 } from './dto';
-import { PaginationDto } from '../../shared/dto';
-import { RedisService } from '../../core/redis/redis.service';
+import { PaginationDto } from '@shared/dto';
+import { RedisService } from '@core/redis/redis.service';
+import { FileDeleteService } from '@core/file-delete.service';
 
 @Injectable()
 export class ProductsService {
@@ -54,6 +55,7 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly fileDeleteService: FileDeleteService,
   ) {}
 
   // ==================== CACHE HELPER METHODS ====================
@@ -413,6 +415,7 @@ export class ProductsService {
             price: createProductDto.price,
             quantity: createProductDto.quantity,
             status: ProductStatus.DRAFT,
+            currency: createProductDto.currency,
             schemaId: schema.id,
             organizationId,
             images: createProductDto.images
@@ -537,6 +540,9 @@ export class ProductsService {
             ...(updateProductDto.status !== undefined && {
               status: updateProductDto.status,
             }),
+            ...(updateProductDto.currency !== undefined && {
+              currency: updateProductDto.currency,
+            }),
             ...(updateProductDto.images && {
               images: {
                 set: updateProductDto.images.map((id) => ({ id })),
@@ -622,6 +628,16 @@ export class ProductsService {
         throw new NotFoundException(
           'Product not found or does not belong to your organization',
         );
+      }
+
+      // Get product images BEFORE database deletion
+      const productWithImages = await this.prisma.product.findUnique({
+        where: { id: productId },
+        select: { images: { select: { key: true } } },
+      });
+      if (productWithImages?.images?.length) {
+        const keys = productWithImages.images.map((img) => img.key);
+        await this.fileDeleteService.deleteFilesByKeys(keys);
       }
 
       // Get product details before deletion for cache invalidation

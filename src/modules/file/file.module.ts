@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { MulterModule } from '@nestjs/platform-express';
 import { FileController } from './file.controller';
 import { FileService } from './file.service';
-import { PrismaModule } from '../../core/prisma/prisma.module';
+import { PrismaModule } from '@/core/prisma/prisma.module';
 import { multerConfig } from './config/multer.config';
 
 @Module({

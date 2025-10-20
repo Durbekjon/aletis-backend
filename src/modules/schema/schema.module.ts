@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../core/prisma/prisma.module';
+import { PrismaModule } from '@/core/prisma/prisma.module';
 import { SchemaController } from './schema.controller';
 import { SchemaService } from './schema.service';
 

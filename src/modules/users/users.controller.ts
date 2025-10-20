@@ -1,9 +1,9 @@
 // import { Body, Controller, Get, Post, Put, UseGuards } from '@nestjs/common';
 // import { UsersService } from './users.service';
 // import { ConnectBotDto } from './dto/connect-bot.dto';
-// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-// import { CurrentUser } from '../auth/decorators/current-user.decorator';
-// import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+// import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
+// import { CurrentUser } from '@auth/decorators/current-user.decorator';
+// import type { JwtPayload } from '@auth/strategies/jwt.strategy';
 // import type { Bot } from '@prisma/client';
 
 // @Controller('users')

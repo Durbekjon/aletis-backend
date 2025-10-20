@@ -30,12 +30,12 @@ import {
 } from '@nestjs/swagger';
 import { FileService } from './file.service';
 import { UploadFileResponseDto, DeleteFilesDto, DeleteFileByKeyDto, FilePaginatedResponseDto } from './dto';
-import { PaginationDto } from '../../shared/dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { PaginationDto } from '@/shared/dto';
+import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
+import { CurrentUser } from '@auth/decorators/current-user.decorator';
+import type { JwtPayload } from '@auth/strategies/jwt.strategy';
 import { multerConfig } from './config/multer.config';
-import { PrismaService } from '../../core/prisma/prisma.service';
+import { PrismaService } from '@/core/prisma/prisma.service';
 
 @ApiTags('Files')
 @ApiBearerAuth('bearer')
