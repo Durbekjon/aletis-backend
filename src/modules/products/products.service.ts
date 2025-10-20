@@ -32,8 +32,9 @@ export class ProductsService {
       limit: number,
       search?: string,
       order?: string,
+      status?: string,
     ) =>
-      `products:org:${orgId}:page:${page}:limit:${limit}${search ? `:search:${search}` : ''}${order ? `:order:${order}` : ''}`,
+      `products:org:${orgId}:page:${page}:limit:${limit}${search ? `:search:${search}` : ''}${order ? `:order:${order}` : ''}${status ? `:status:${status}` : ''}`,
     PRODUCT_DETAILS: (id: number) => `product:${id}:details`,
     ORG_PRODUCTS: (orgId: number) => `org:${orgId}:products`,
     SCHEMA_PRODUCTS: (schemaId: number) => `schema:${schemaId}:products`,
@@ -747,7 +748,7 @@ export class ProductsService {
   ): Promise<ProductPaginatedResponseDto> {
     try {
       const organizationId = await this.getUserOrganizationId(userId);
-      const { page, limit, search, order } = paginationDto;
+      const { page, limit, search, order, status } = paginationDto;
 
       // Create cache key for this specific query
       const cacheKey = this.CACHE_KEYS.PRODUCTS_LIST(
@@ -756,6 +757,7 @@ export class ProductsService {
         limit || 20,
         search,
         order,
+        status,
       );
 
       // Use getOrSetCache with stampede protection
@@ -802,6 +804,11 @@ export class ProductsService {
                 },
               },
             ];
+          }
+
+          // Add status filter if provided
+          if (status && status.trim()) {
+            where.status = status.trim() as ProductStatus;
           }
 
           // Build the orderBy clause

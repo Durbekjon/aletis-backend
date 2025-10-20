@@ -15,6 +15,7 @@ import { MessagesModule } from './messages/messages.module';
 import { PostsModule } from './posts/posts.module';
 import { OrdersModule } from './orders/orders.module';
 import { OnboardingProgressModule } from './onboarding-progress/onboarding-progress.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { OnboardingProgressModule } from './onboarding-progress/onboarding-progr
     PostsModule,
     OrdersModule,
     OnboardingProgressModule,
+    HealthModule,
   ],
 })
 export class ModulesModule {}
