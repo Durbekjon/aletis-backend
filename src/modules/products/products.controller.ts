@@ -101,6 +101,13 @@ export class ProductsController {
     enum: ['asc', 'desc'],
     example: 'desc',
   })
+  @ApiQuery({
+    name: 'status',
+    description: 'Filter by product status',
+    required: false,
+    enum: ['ACTIVE', 'ARCHIVED','DRAFT'],
+    example: 'ACTIVE',
+  })
   @ApiResponse({
     status: 200,
     description: 'Products retrieved successfully',
