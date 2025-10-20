@@ -3,9 +3,9 @@ import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
 import { PrismaModule } from '@/core/prisma/prisma.module';
 import { RedisModule } from '@/core/redis/redis.module';
-
+import { FileDeleteModule } from '@/core/file-delete/file-delete.module';
 @Module({
-  imports: [PrismaModule, RedisModule],
+  imports: [PrismaModule, RedisModule, FileDeleteModule],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],
