@@ -127,28 +127,68 @@ export class WebhookService {
         aiResponse,
         customer,
         flushResult.organizationId,
+        flushResult.combinedMessage, // Pass the original user message for language detection
       );
 
-      // Send response to Telegram
+      // Send response to Telegram (single message)
       try {
-        const res = await this.telegramService.sendRequest(
-          decryptedToken,
-          'sendMessage',
-          {
-            chat_id: customer.telegramId,
-            text: processedResponse.text,
-            parse_mode: 'HTML',
-          },
-        );
+        const images = (aiResponse as any).images as string[] | undefined;
+        const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
+        const toAbsolute = (url: string) => {
+          if (/^https?:\/\//i.test(url)) return url;
+          const left = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+          const right = url.startsWith('/') ? url : `/${url}`;
+          return `${left}${right}`;
+        };
 
-        if (!res.ok) {
-          this.logger.error(
-            `Failed to send message to customer ${customer.id}: ${res.description || 'Unknown error'}`,
+        if (images && images.length > 0) {
+          const firstPhoto = toAbsolute(images[0]);
+          const extraLinks = images.slice(1, 3).map(toAbsolute);
+          const extraText =
+            extraLinks.length > 0 ? `\n\n${extraLinks.join('\n')}` : '';
+          let caption = `${processedResponse.text}${extraText}`;
+          if (caption.length > 1024) caption = caption.slice(0, 1010) + '...';
+
+          const res = await this.telegramService.sendRequest(
+            decryptedToken,
+            'sendPhoto',
+            {
+              chat_id: customer.telegramId,
+              photo: firstPhoto,
+              caption,
+              parse_mode: 'HTML',
+            },
           );
+
+          if (!res.ok) {
+            this.logger.error(
+              `Failed to send photo with caption to customer ${customer.id}: ${res.description || 'Unknown error'}`,
+            );
+          } else {
+            this.logger.log(
+              `AI photo+caption sent to customer ${customer.id}: "${processedResponse.text.substring(0, 50)}${processedResponse.text.length > 50 ? '...' : ''}"`,
+            );
+          }
         } else {
-          this.logger.log(
-            `AI response sent to customer ${customer.id}: "${processedResponse.text.substring(0, 50)}${processedResponse.text.length > 50 ? '...' : ''}"`,
+          const res = await this.telegramService.sendRequest(
+            decryptedToken,
+            'sendMessage',
+            {
+              chat_id: customer.telegramId,
+              text: processedResponse.text,
+              parse_mode: 'HTML',
+            },
           );
+
+          if (!res.ok) {
+            this.logger.error(
+              `Failed to send message to customer ${customer.id}: ${res.description || 'Unknown error'}`,
+            );
+          } else {
+            this.logger.log(
+              `AI response sent to customer ${customer.id}: "${processedResponse.text.substring(0, 50)}${processedResponse.text.length > 50 ? '...' : ''}"`,
+            );
+          }
         }
       } catch (error) {
         this.logger.error(

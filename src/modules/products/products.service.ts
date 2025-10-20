@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
-import { FieldType } from '@prisma/client';
+import { FieldType, ProductStatus } from '@prisma/client';
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -410,6 +410,8 @@ export class ProductsService {
           data: {
             name: createProductDto.name,
             price: createProductDto.price,
+            quantity: createProductDto.quantity,
+            status: ProductStatus.DRAFT,
             schemaId: schema.id,
             organizationId,
             images: createProductDto.images
@@ -527,6 +529,12 @@ export class ProductsService {
             ...(updateProductDto.name && { name: updateProductDto.name }),
             ...(updateProductDto.price !== undefined && {
               price: updateProductDto.price,
+            }),
+            ...(updateProductDto.quantity !== undefined && {
+              quantity: updateProductDto.quantity,
+            }),
+            ...(updateProductDto.status !== undefined && {
+              status: updateProductDto.status,
             }),
             ...(updateProductDto.images && {
               images: {
@@ -705,6 +713,8 @@ export class ProductsService {
             id: product.id,
             name: product.name,
             price: product.price,
+            quantity: product.quantity,
+            status: product.status,
             schemaId: product.schemaId,
             schemaName: product.schema.name,
             organizationId: product.organizationId,
@@ -847,6 +857,8 @@ export class ProductsService {
                 id: product.id,
                 name: product.name,
                 price: product.price,
+                quantity: product.quantity,
+                status: product.status,
                 schemaId: product.schemaId,
                 schemaName: product.schema.name,
                 organizationId: product.organizationId,
@@ -956,6 +968,7 @@ export class ProductsService {
             field: true,
           },
         },
+        images: true,
       },
     });
     return this.transformProductsToString(products);
@@ -1001,7 +1014,14 @@ export class ProductsService {
           })
           .join(', ');
 
-        return `Product: ${p.name} | Price: ${p.price} | Qty: ${p.quantity || 1} | Fields: {${fieldsStr}}`;
+        const imageKeys = Array.isArray(p.images)
+          ? p.images.map((img: any) => img.key).filter(Boolean)
+          : [];
+
+        const imagesStr =
+          imageKeys.length > 0 ? ` | Images: [${imageKeys.join(', ')}]` : '';
+
+        return `Product: ${p.name} | Price: ${p.price} | Qty: ${p.quantity || 1} | Fields: {${fieldsStr}}${imagesStr}`;
       })
       .join('\n');
   }

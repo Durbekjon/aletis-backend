@@ -60,6 +60,15 @@ export class CreateProductDto {
   @Min(0)
   price: number;
 
+  @ApiProperty({
+    description: 'The quantity of the product',
+    example: 1,
+  })
+  @IsNumber()
+  @IsNotEmpty()
+  @Min(1)
+  quantity: number = 1;
+
   @ApiPropertyOptional({
     description: 'Array of file IDs for product images',
     type: [Number],
