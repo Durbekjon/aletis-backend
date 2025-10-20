@@ -18,7 +18,7 @@ import {
 } from './dto';
 import { PaginationDto } from '@shared/dto';
 import { RedisService } from '@core/redis/redis.service';
-import { FileDeleteService } from '@core/file-delete.service';
+import { FileDeleteService } from '@core/file-delete/file-delete.service';
 
 @Injectable()
 export class ProductsService {
