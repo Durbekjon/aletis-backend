@@ -9,7 +9,7 @@ import {
 import { Bot, ConnectionStatus, Prisma, type Channel } from '@prisma/client';
 import { PaginatedResponseDto, PaginationDto } from '@/shared/dto';
 import { CreateChannelDto } from './dto/create-channel.dto';
-import { EncryptionService } from '../../core/encryption/encryption.service';
+import { EncryptionService } from '@/core/encryption/encryption.service';
 
 interface TelegramUser {
   id: number;

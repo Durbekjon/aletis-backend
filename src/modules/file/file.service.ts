@@ -5,10 +5,10 @@ import {
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { PrismaService } from '../../core/prisma/prisma.service';
+import { PrismaService } from '@/core/prisma/prisma.service';
 import { FileType, FileStatus } from '@prisma/client';
 import { UploadFileResponseDto, FilePaginatedResponseDto } from './dto';
-import { PaginationDto, PaginatedResponseDto } from '../../shared/dto';
+import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { promisify } from 'util';

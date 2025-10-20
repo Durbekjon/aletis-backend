@@ -20,9 +20,9 @@ import {
   ApiQuery,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
+import { CurrentUser } from '@auth/decorators/current-user.decorator';
+import type { JwtPayload } from '@auth/strategies/jwt.strategy';
 import { ProductsService } from './products.service';
 import {
   CreateProductDto,
@@ -31,7 +31,7 @@ import {
   ProductPaginatedResponseDto,
   BulkDeleteProductsDto,
 } from './dto';
-import { PaginationDto } from '../../shared/dto';
+import { PaginationDto } from '@/shared/dto';
 
 @ApiTags('Products')
 @ApiBearerAuth()

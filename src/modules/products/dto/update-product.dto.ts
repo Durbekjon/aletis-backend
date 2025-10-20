@@ -1,7 +1,7 @@
 import { IsString, IsOptional, IsNumber, IsArray, ValidateNested, IsInt, Min, IsEnum } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ProductStatus } from '@prisma/client';
+import { Currency, ProductStatus } from '@prisma/client';
 
 export class UpdateFieldValueDto {
   @ApiPropertyOptional({
@@ -69,6 +69,15 @@ export class UpdateProductDto {
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
+
+  @ApiPropertyOptional({
+    description: 'The currency of the product',
+    example: Currency.USD,
+  })
+  @IsOptional()
+  @IsString()
+  @IsEnum(Currency)
+  currency?: Currency;
 
   @ApiPropertyOptional({
     description: 'Array of file IDs for product images',

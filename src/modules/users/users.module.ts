@@ -1,8 +1,8 @@
 import { Logger, Module } from '@nestjs/common';
 // import { UsersService } from './users.service';
 // import { UsersController } from './users.controller';
-import { CoreModule } from '../../core/core.module';
-import { AuthModule } from '../auth/auth.module';
+import { CoreModule } from '@/core/core.module';
+import { AuthModule } from '@auth/auth.module';
 
 @Module({
   imports: [CoreModule, AuthModule],
