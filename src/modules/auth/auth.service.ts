@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -10,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import crypto from 'node:crypto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { User } from '@prisma/client';
 
 type Tokens = { accessToken: string; refreshToken: string };
 @Injectable()
@@ -190,6 +192,17 @@ export class AuthService {
         resetTokenExpiry: null,
       },
     });
+  }
+
+  async getMe(userId: number): Promise<{ id: number; email: string; firstName: string | null; lastName: string | null }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, firstName: true, lastName: true, email: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
   }
 
   private async updateUserRefreshTokenHash(

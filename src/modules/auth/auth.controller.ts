@@ -113,8 +113,8 @@ export class AuthController {
       },
     },
   })
-  me(@CurrentUser() user: JwtPayload): JwtPayload {
-    return user;
+  me(@CurrentUser() user: JwtPayload) {
+    return this.authService.getMe(Number(user.userId));
   }
 
   @Post('forgot-password')
