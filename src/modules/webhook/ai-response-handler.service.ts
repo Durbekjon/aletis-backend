@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersService } from '@modules/orders/orders.service';
-import { AiResponse } from '@core/gemini/gemini.service';
+import { AiResponse, GeminiService } from '@core/gemini/gemini.service';
 import { Customer } from '@prisma/client';
 
 export interface ProcessedAiResponse {
@@ -15,7 +15,10 @@ export interface ProcessedAiResponse {
 export class AiResponseHandlerService {
   private readonly logger = new Logger(AiResponseHandlerService.name);
 
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly geminiService: GeminiService,
+  ) {}
 
   /**
    * Process AI response and execute corresponding order actions
@@ -24,6 +27,7 @@ export class AiResponseHandlerService {
     aiResponse: AiResponse,
     customer: Customer,
     organizationId: number,
+    originalUserMessage?: string,
   ): Promise<ProcessedAiResponse> {
     try {
       switch (aiResponse.intent) {
@@ -32,6 +36,7 @@ export class AiResponseHandlerService {
             aiResponse,
             customer,
             organizationId,
+            originalUserMessage,
           );
 
         case 'FETCH_ORDERS':
@@ -58,8 +63,11 @@ export class AiResponseHandlerService {
         `Error processing AI response: ${error.message}`,
         error.stack,
       );
+
       return {
-        text: aiResponse.text || "I'm sorry, I encountered an error processing your request. Please try again.",
+        text:
+          aiResponse.text ||
+          "I'm sorry, I encountered an error processing your request. Please try again.",
       };
     }
   }
@@ -71,11 +79,16 @@ export class AiResponseHandlerService {
     aiResponse: AiResponse,
     customer: Customer,
     organizationId: number,
+    originalUserMessage?: string,
   ): Promise<ProcessedAiResponse> {
     if (!aiResponse.orderData) {
-      this.logger.warn('CREATE_ORDER intent received but no order data provided');
+      this.logger.warn(
+        'CREATE_ORDER intent received but no order data provided',
+      );
       return {
-        text: aiResponse.text || "I'd be happy to help you place an order! Could you please tell me what you'd like to order?",
+        text:
+          aiResponse.text ||
+          "I'd be happy to help you place an order! Could you please tell me what you'd like to order?",
       };
     }
 
@@ -86,9 +99,23 @@ export class AiResponseHandlerService {
         organizationId,
       );
 
-      const confirmationMessage = this.buildOrderConfirmationMessage(order);
-      
-      this.logger.log(`Order created via AI: ${order.id} for customer: ${customer.id}`);
+      // Generate confirmation message using Gemini with automatic language detection
+      const confirmationMessage =
+        await this.geminiService.generateOrderConfirmation(
+          {
+            orderId: order.id,
+            items: Array.isArray(order.details?.items)
+              ? order.details.items
+              : [order.details?.items || 'To be specified'],
+            phoneNumber: order.details?.phoneNumber,
+            notes: order.details?.notes,
+          },
+          originalUserMessage || '',
+        );
+
+      this.logger.log(
+        `Order created via AI: ${order.id} for customer: ${customer.id}`,
+      );
 
       return {
         text: confirmationMessage,
@@ -96,7 +123,11 @@ export class AiResponseHandlerService {
         orderId: order.id,
       };
     } catch (error) {
-      this.logger.error(`Failed to create order via AI: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to create order via AI: ${error.message}`,
+        error.stack,
+      );
+
       return {
         text: "I'm sorry, I couldn't process your order right now. Please try again or contact our support team.",
       };
@@ -119,7 +150,7 @@ export class AiResponseHandlerService {
       );
 
       const ordersMessage = this.buildOrdersListMessage(orders);
-      
+
       this.logger.log(`Orders fetched via AI for customer: ${customer.id}`);
 
       return {
@@ -127,7 +158,11 @@ export class AiResponseHandlerService {
         ordersFetched: true,
       };
     } catch (error) {
-      this.logger.error(`Failed to fetch orders via AI: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to fetch orders via AI: ${error.message}`,
+        error.stack,
+      );
+
       return {
         text: "I'm having trouble retrieving your orders right now. Please try again later.",
       };
@@ -143,8 +178,10 @@ export class AiResponseHandlerService {
     organizationId: number,
   ): Promise<ProcessedAiResponse> {
     // Extract order ID from the AI response or order data
-    const orderId = aiResponse.orderData?.orderId || this.extractOrderIdFromText(aiResponse.text);
-    
+    const orderId =
+      aiResponse.orderData?.orderId ||
+      this.extractOrderIdFromText(aiResponse.text);
+
     if (!orderId) {
       return {
         text: "I'd be happy to help you cancel an order! Could you please tell me which order you'd like to cancel? You can provide the order number.",
@@ -159,8 +196,10 @@ export class AiResponseHandlerService {
       );
 
       const cancellationMessage = this.buildOrderCancellationMessage(order);
-      
-      this.logger.log(`Order cancelled via AI: ${order.id} for customer: ${customer.id}`);
+
+      this.logger.log(
+        `Order cancelled via AI: ${order.id} for customer: ${customer.id}`,
+      );
 
       return {
         text: cancellationMessage,
@@ -168,43 +207,28 @@ export class AiResponseHandlerService {
         orderId: order.id,
       };
     } catch (error) {
-      this.logger.error(`Failed to cancel order via AI: ${error.message}`, error.stack);
-      
+      this.logger.error(
+        `Failed to cancel order via AI: ${error.message}`,
+        error.stack,
+      );
+
+      let errorMessage: string;
+
       if (error.message.includes('not found')) {
-        return {
-          text: "I couldn't find that order. Please check the order number and try again.",
-        };
-      }
-      
-      if (error.message.includes('Cannot cancel')) {
-        return {
-          text: "I'm sorry, but that order cannot be cancelled at this time. Please contact our support team for assistance.",
-        };
+        errorMessage =
+          "I couldn't find that order. Please check the order number and try again.";
+      } else if (error.message.includes('Cannot cancel')) {
+        errorMessage =
+          "I'm sorry, but that order cannot be cancelled at this time. Please contact our support team for assistance.";
+      } else {
+        errorMessage =
+          "I'm sorry, I couldn't cancel your order right now. Please try again or contact our support team.";
       }
 
       return {
-        text: "I'm sorry, I couldn't cancel your order right now. Please try again or contact our support team.",
+        text: errorMessage,
       };
     }
-  }
-
-  /**
-   * Build order confirmation message
-   */
-  private buildOrderConfirmationMessage(order: any): string {
-    const items = order.details?.items || [];
-    const itemsText = Array.isArray(items) ? items.join(', ') : items;
-    
-    return `✅ <b>Order Confirmed!</b>
-
-📋 <b>Order #${order.id}</b>
-🛍️ <b>Items:</b> ${itemsText || 'To be specified'}
-📞 <b>Contact:</b> ${order.details?.phoneNumber || 'Not provided'}
-📝 <b>Notes:</b> ${order.details?.notes || 'None'}
-
-Your order has been received and is being processed. We'll contact you soon with more details!
-
-Is there anything else I can help you with?`;
   }
 
   /**
@@ -223,7 +247,7 @@ You don't have any orders yet. Would you like to place your first order? I can h
       const status = this.getStatusEmoji(order.status);
       const items = order.details?.items || 'No items specified';
       const createdAt = new Date(order.createdAt).toLocaleDateString();
-      
+
       message += `${index + 1}. ${status} <b>Order #${order.id}</b>\n`;
       message += `   📅 ${createdAt}\n`;
       message += `   🛍️ ${items}\n`;

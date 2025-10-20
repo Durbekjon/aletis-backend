@@ -8,6 +8,7 @@ export interface AiResponse {
   intent?: string;
   orderData?: any;
   shouldFetchOrders?: boolean;
+  images?: string[];
 }
 
 @Injectable()
@@ -79,6 +80,7 @@ export class GeminiService {
 
     const productInfo =
       productContext || 'No products are currently available in inventory.';
+    const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
 
     return `You are Flovo, a friendly and helpful AI assistant for a business in Uzbekistan. You are warm, engaging, and speak like a real person.
 
@@ -93,10 +95,20 @@ CRITICAL BUSINESS RULES:
 1. NEVER lower prices or offer discounts unless explicitly authorized
 2. Keep responses natural and conversational (not too long)
 3. Stay on-topic - focus on products, orders, and business matters
-4. Answer in the customer's language (Uzbek, Russian, or English)
+4. ALWAYS respond in the SAME language as the customer's message (Uzbek, Russian, or English)
 5. Only sell products that are actually in stock
 6. Be honest about availability - don't promise what you don't have
 7. Use relevant emojis (such as 💵, 💳, 📦, 🛒, 📱) to highlight money, payment, or product details where appropriate, but keep them minimal and natural.
+
+LANGUAGE DETECTION RULES:
+- Detect the language of the customer's message automatically
+- Respond in the EXACT same language as the customer wrote
+- If customer writes in Uzbek → respond in Uzbek
+- If customer writes in Russian → respond in Russian  
+- If customer writes in English → respond in English
+- If language cannot be detected, default to Uzbek
+- Do NOT ask about language preference - detect and match automatically
+- Keep the same tone (formal/casual) as the customer's message
 
 PRICING POLICY:
 - Always quote the EXACT listed price from inventory
@@ -160,6 +172,21 @@ ${userOrders.map((order) => `- Order #${order.id}: ${order.details?.items || 'N/
     : ''
 }
 
+PRODUCT IMAGE RULES:
+- The server base URL for building absolute image URLs is: ${baseUrl}
+- Product data may include image keys like "public/uploads/filename.jpg"
+- When you need to return image URLs, construct absolute URLs by prefixing with the base URL if they are relative
+
+PRODUCT ANSWER FORMAT (for product inquiries ONLY):
+- Detect language automatically and respond in that language
+- Return STRICT JSON (no markdown), with shape:
+{
+  "text": "Your reply in customer's language",
+  "images": ["https://.../public/uploads/one.jpg", "https://.../public/uploads/two.jpg"]
+}
+- If no images are available, return only the "text" field
+- Do NOT use markdown image syntax; only clean URLs
+
 SPECIAL INTENTS:
 1. When customer wants to place an order for AVAILABLE products, use:
 [INTENT:CREATE_ORDER]
@@ -179,6 +206,57 @@ SPECIAL INTENTS:
   "orderId": "extracted order number or null if not specified"
 }
 
+4. When an order is successfully created, use:
+[INTENT:ORDER_CONFIRMATION]
+{
+  "orderId": "order ID number",
+  "items": "array of product names and quantities",
+  "phoneNumber": "customer phone number",
+  "notes": "delivery address, payment method, etc."
+}
+
+ORDER CONFIRMATION RULES:
+When an order is successfully created, generate a confirmation message in the SAME language the customer used:
+
+✅ Order confirmed successfully!
+
+📋 Order #{{order.id}}
+🛍️ Items: {{product names and quantities}}
+📞 Contact: {{customer phone number}}
+📝 Notes: {{notes (delivery address, payment method, etc.)}}
+
+We'll contact you soon with more details.
+Is there anything else I can help you with?
+
+LANGUAGE LOCALIZATION EXAMPLES:
+
+Uzbek:
+Buyurtma muvaffaqiyatli tasdiqlandi ✅
+📋 Buyurtma raqami: #{{order.id}}
+🛍️ Mahsulotlar: {{product names and quantities}}
+📞 Aloqa: {{customer phone number}}
+📝 Izoh: {{notes}}
+Tez orada siz bilan bog'lanamiz 😊
+Yana nimadir kerakmi?
+
+Russian:
+Заказ успешно подтверждён ✅
+📋 Номер заказа: #{{order.id}}
+🛍️ Товары: {{product names and quantities}}
+📞 Контакт: {{customer phone number}}
+📝 Примечание: {{notes}}
+Мы свяжемся с вами в ближайшее время!
+Хотите что-нибудь ещё?
+
+English:
+Order confirmed successfully ✅
+📋 Order #{{order.id}}
+🛍️ Items: {{product names and quantities}}
+📞 Contact: {{customer phone number}}
+📝 Notes: {{notes}}
+We'll contact you soon with more details.
+Is there anything else I can help you with?
+
 IMPORTANT CONVERSATION RULES:
 - If customer has already agreed to order something, don't ask again - proceed with order details
 - If customer says "yes" to ordering, immediately create the order and confirm
@@ -195,6 +273,31 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
   }
 
   private parseResponse(aiText: string): AiResponse {
+    // First, try to parse strict JSON for product inquiry outputs
+    const extractJson = (text: string): any | null => {
+      try {
+        // fenced block
+        const fenced = text.match(/```json\s*([\s\S]*?)```/i);
+        if (fenced) {
+          return JSON.parse(fenced[1].trim());
+        }
+        // pure JSON
+        if (text.trim().startsWith('{')) {
+          return JSON.parse(text.trim());
+        }
+      } catch (_) {
+        return null;
+      }
+      return null;
+    };
+
+    const json = extractJson(aiText);
+    if (json && typeof json.text === 'string') {
+      const images = Array.isArray(json.images)
+        ? json.images.filter((u: any) => typeof u === 'string')
+        : undefined;
+      return { text: json.text, images };
+    }
     // Look for order creation intent marker
     const orderMatch = aiText.match(/\[INTENT:CREATE_ORDER\]\s*(\{[\s\S]*?\})/);
 
@@ -255,5 +358,107 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
     return {
       text: aiText,
     };
+  }
+
+  /**
+   * Generate order confirmation message with automatic language detection
+   */
+  async generateOrderConfirmation(
+    orderData: {
+      orderId: number;
+      items: string[];
+      phoneNumber?: string;
+      notes?: string;
+    },
+    customerMessage: string,
+  ): Promise<string> {
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+      });
+
+      const prompt = `You are the Flovo AI assistant. Generate an order confirmation message in the SAME language as the customer's message.
+
+CUSTOMER'S MESSAGE: "${customerMessage}"
+
+ORDER DATA:
+- Order ID: ${orderData.orderId}
+- Items: ${orderData.items.join(', ')}
+- Phone: ${orderData.phoneNumber || 'Not provided'}
+- Notes: ${orderData.notes || 'None'}
+
+INSTRUCTIONS:
+1. Detect the language of the customer's message automatically
+2. Generate a confirmation message in that EXACT same language
+3. Use the format and examples provided below
+4. Make it sound natural and friendly for that language
+
+FORMAT TEMPLATE:
+✅ [Order confirmed message in detected language]
+
+📋 [Order number label]: #${orderData.orderId}
+🛍️ [Items label]: ${orderData.items.join(', ')}
+📞 [Contact label]: ${orderData.phoneNumber || 'Not provided'}
+📝 [Notes label]: ${orderData.notes || 'None'}
+
+[Follow-up message in detected language]
+[Closing question in detected language]
+
+LANGUAGE EXAMPLES:
+
+Uzbek:
+Buyurtma muvaffaqiyatli tasdiqlandi ✅
+📋 Buyurtma raqami: #${orderData.orderId}
+🛍️ Mahsulotlar: ${orderData.items.join(', ')}
+📞 Aloqa: ${orderData.phoneNumber || 'Kiritilmagan'}
+📝 Izoh: ${orderData.notes || "Yo'q"}
+Tez orada siz bilan bog'lanamiz 😊
+Yana nimadir kerakmi?
+
+Russian:
+Заказ успешно подтверждён ✅
+📋 Номер заказа: #${orderData.orderId}
+🛍️ Товары: ${orderData.items.join(', ')}
+📞 Контакт: ${orderData.phoneNumber || 'Не указан'}
+📝 Примечание: ${orderData.notes || 'Нет'}
+Мы свяжемся с вами в ближайшее время!
+Хотите что-нибудь ещё?
+
+English:
+Order confirmed successfully ✅
+📋 Order #${orderData.orderId}
+🛍️ Items: ${orderData.items.join(', ')}
+📞 Contact: ${orderData.phoneNumber || 'Not provided'}
+📝 Notes: ${orderData.notes || 'None'}
+We'll contact you soon with more details.
+Is there anything else I can help you with?
+
+Generate the confirmation message now:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const confirmationMessage = response.text().trim();
+
+      this.logger.log(
+        `Order confirmation generated for order ${orderData.orderId}`,
+      );
+      return confirmationMessage;
+    } catch (error) {
+      this.logger.error(
+        `Error generating order confirmation: ${error.message}`,
+        error.stack,
+      );
+
+      // Fallback confirmation message in English
+      return `Order confirmed successfully ✅
+
+📋 Order #${orderData.orderId}
+🛍️ Items: ${orderData.items.join(', ')}
+📞 Contact: ${orderData.phoneNumber || 'Not provided'}
+📝 Notes: ${orderData.notes || 'None'}
+
+We'll contact you soon with more details.
+Is there anything else I can help you with?`;
+    }
   }
 }
