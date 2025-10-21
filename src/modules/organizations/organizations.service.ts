@@ -23,35 +23,52 @@ export class OrganizationsService {
     userId: number,
     dto: CreateOrganizationDto,
   ): Promise<Organization> {
+    // 1. Ensure the user exists
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { member: true },
     });
-    if (user?.member) {
-      throw new BadRequestException('Organization is allready exist');
+    if (!user) throw new NotFoundException('User not found');
+
+    // 2. Ensure user is not already a member of any organization
+    if (user.member) {
+      throw new BadRequestException(
+        'User is already associated with an organization',
+      );
     }
-    const organization = await this.prisma.organization.create({
-      data: {
-        name: dto.name,
-        description: dto.description ?? null,
-        category: dto.category ?? undefined,
-        members: {
-          create: {
-            userId,
-            role: 'ADMIN' as MemberRole,
-            status: 'ACTIVE' as MemberStatus,
+
+    // 3. Create organization and member in a single transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.create({
+        data: {
+          name: dto.name,
+          description: dto.description ?? null,
+          category: dto.category ?? undefined,
+          onboardingProgress: {
+            create: {
+              percentage: 20,
+              status: OnboardingStatus.INCOMPLETE,
+              nextStep: dto.category
+                ? OnboardingStep.SELECT_CATEGORY
+                : OnboardingStep.CONFIGURE_SCHEMA,
+            },
           },
         },
-        onboardingProgress: {
-          create: {
-            percentage: 20,
-            status: OnboardingStatus.INCOMPLETE,
-            nextStep: dto.category ? OnboardingStep.SELECT_CATEGORY : OnboardingStep.CONFIGURE_SCHEMA,
-          },
+      });
+      await tx.member.create({
+        data: {
+          userId,
+          organizationId: organization.id,
+          role: 'ADMIN' as MemberRole,
+          status: 'ACTIVE' as MemberStatus,
         },
-      },
+      });
+      return tx.organization.findUnique({
+        where: { id: organization.id },
+        include: { onboardingProgress: true },
+      });
     });
-    return organization;
+    return result!;
   }
 
   async getMyOrganization(userId: number): Promise<Organization> {

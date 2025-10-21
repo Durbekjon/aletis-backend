@@ -45,7 +45,6 @@ export class WebhookService {
       botId,
       organizationId,
     );
-    console.log(result);
     if (!result) {
       return { status: 'ok' };
     }
