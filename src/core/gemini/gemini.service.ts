@@ -651,4 +651,211 @@ We'll contact you soon with more details.
 Is there anything else I can help you with?`;
     }
   }
+
+  /**
+   * Detect the language of a given text
+   */
+  async detectLanguage(text: string): Promise<string> {
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const prompt = `Detect the language of the following text and return only the language code (uz, ru, en):
+
+Text: "${text}"
+
+Return only the language code:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const languageCode = response.text().trim().toLowerCase();
+
+      // Validate and return supported language codes
+      if (['uz', 'ru', 'en'].includes(languageCode)) {
+        return languageCode;
+      }
+
+      // Default to Uzbek if detection fails
+      return 'uz';
+    } catch (error) {
+      this.logger.warn(`Language detection failed: ${error.message}`);
+      return 'uz'; // Default to Uzbek
+    }
+  }
+
+  /**
+   * Translate a message to the specified language
+   */
+  async translateMessage(
+    message: string,
+    targetLanguage: string,
+  ): Promise<string> {
+    try {
+      // If target language is English, return as is
+      if (targetLanguage === 'en') {
+        return message;
+      }
+
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const languageNames: Record<string, string> = {
+        uz: 'Uzbek',
+        ru: 'Russian',
+        en: 'English',
+      };
+
+      const prompt = `Translate the following message to ${languageNames[targetLanguage] || 'Uzbek'}. Keep the HTML formatting and emojis intact:
+
+${message}
+
+Translated message:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
+    } catch (error) {
+      this.logger.warn(`Translation failed: ${error.message}`);
+      return message; // Return original message if translation fails
+    }
+  }
+
+  /**
+   * Generate orders list response in customer's language
+   */
+  async generateOrdersListResponse(
+    orders: any[],
+    userMessage: string,
+  ): Promise<string> {
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const ordersData = orders.map((order, index) => {
+        const status = this.getStatusEmoji(order.status);
+        const items = order.items || 'No items specified';
+        const createdAt = new Date(order.createdAt).toLocaleDateString();
+        return {
+          number: index + 1,
+          id: order.id,
+          status,
+          date: createdAt,
+          items,
+          totalPrice: order.totalPrice || 0,
+        };
+      });
+
+      const prompt = `You are Flovo, a friendly AI assistant. The customer asked: "${userMessage}"
+
+CUSTOMER ORDERS DATA:
+${JSON.stringify(ordersData, null, 2)}
+
+INSTRUCTIONS:
+1. Respond in the EXACT same language as the customer's message
+2. If customer wrote in Uzbek → respond in Uzbek
+3. If customer wrote in Russian → respond in Russian  
+4. If customer wrote in English → respond in English
+5. If no orders exist, say "You don't have any orders yet" in their language
+6. If orders exist, list them nicely with emojis
+7. Keep the same tone (formal/casual) as the customer's message
+8. Use appropriate emojis for orders, dates, items, prices
+9. End with a helpful question about what they'd like to do next
+
+Generate a natural, friendly response:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to generate orders list response: ${error.message}`,
+      );
+
+      // Fallback to simple response
+      if (orders.length === 0) {
+        return "You don't have any orders yet. Would you like to place your first order?";
+      }
+
+      let message = 'Your Recent Orders:\n\n';
+      orders.forEach((order, index) => {
+        const status = this.getStatusEmoji(order.status);
+        const items = order.items || 'No items specified';
+        const createdAt = new Date(order.createdAt).toLocaleDateString();
+        message += `${index + 1}. ${status} Order #${order.id}\n`;
+        message += `   📅 ${createdAt}\n`;
+        message += `   🛍️ ${items}\n`;
+        message += `   💰 $${order.totalPrice || 0}\n\n`;
+      });
+      message +=
+        'Would you like to know more about any specific order or place a new one?';
+      return message;
+    }
+  }
+
+  /**
+   * Generate order cancellation response in customer's language
+   */
+  async generateOrderCancellationResponse(
+    order: any,
+    userMessage: string,
+  ): Promise<string> {
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const prompt = `You are Flovo, a friendly AI assistant. The customer asked: "${userMessage}"
+
+ORDER CANCELLED:
+- Order ID: ${order.id}
+- Status: ${order.status}
+- Total: $${order.totalPrice || 0}
+
+INSTRUCTIONS:
+1. Respond in the EXACT same language as the customer's message
+2. If customer wrote in Uzbek → respond in Uzbek
+3. If customer wrote in Russian → respond in Russian  
+4. If customer wrote in English → respond in English
+5. Confirm the order has been cancelled
+6. Be friendly and helpful
+7. Use appropriate emojis
+8. Ask if they need help with anything else
+
+Generate a natural, friendly response:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to generate cancellation response: ${error.message}`,
+      );
+
+      // Fallback response
+      return `❌ Order Cancelled
+
+📋 Order #${order.id} has been successfully cancelled.
+
+If you change your mind, you can always place a new order! Is there anything else I can help you with?`;
+    }
+  }
+
+  /**
+   * Get status emoji for order status
+   */
+  private getStatusEmoji(status: string): string {
+    const statusEmojis: Record<string, string> = {
+      NEW: '🆕',
+      PENDING: '⏳',
+      CONFIRMED: '✅',
+      SHIPPED: '🚚',
+      DELIVERED: '📦',
+      CANCELLED: '❌',
+      REFUNDED: '💰',
+    };
+    return statusEmojis[status] || '📋';
+  }
 }
