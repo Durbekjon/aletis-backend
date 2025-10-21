@@ -36,6 +36,24 @@ export class OnboardingProgressController {
     return this.onboardingProgressService.getCurrentStep(Number(user.userId));
   }
 
+  @Get()
+  @ApiOperation({ 
+    summary: 'Get onboarding progress',
+    description: 'Returns the onboarding progress for the user\'s organization'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Onboarding progress retrieved successfully',
+    type: OnboardingProgressResponseDto
+  })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'User is not a member of any organization or onboarding progress not found'
+  })
+  async getOnboardingProgress(@CurrentUser() user: JwtPayload): Promise<any> {
+    return this.onboardingProgressService.getOnboardingProgress(Number(user.userId));
+  }
+
   @Get('steps')
   @ApiOperation({ 
     summary: 'Get all onboarding steps',
