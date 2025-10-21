@@ -96,13 +96,17 @@ export class OrdersService {
         customerId: dto.customerId,
         details: dto.details as Prisma.InputJsonValue,
         organizationId,
-        quantity: dto.quantity || 1,
         totalPrice: dto.totalPrice || 0,
-        products: dto.productIds
-          ? {
-              connect: dto.productIds.map((id) => ({ id })),
-            }
-          : undefined,
+        orderItems:
+          dto.productIds && dto.productIds.length > 0
+            ? {
+                create: dto.productIds.map((productId) => ({
+                  productId,
+                  quantity: 1, // Default quantity for manual orders
+                  price: 0, // Will need to be updated with actual product price
+                })),
+              }
+            : undefined,
       },
       include: {
         customer: {
@@ -113,16 +117,21 @@ export class OrdersService {
             telegramId: true,
           },
         },
-        products: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            images: {
+        orderItems: {
+          include: {
+            product: {
               select: {
                 id: true,
-                key: true,
-                originalName: true,
+                name: true,
+                price: true,
+                currency: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                    originalName: true,
+                  },
+                },
               },
             },
           },
@@ -191,16 +200,21 @@ export class OrdersService {
               telegramId: true,
             },
           },
-          products: {
-            select: {
-              id: true,
-              name: true,
-              price: true,
-              images: {
+          orderItems: {
+            include: {
+              product: {
                 select: {
                   id: true,
-                  key: true,
-                  originalName: true,
+                  name: true,
+                  price: true,
+                  currency: true,
+                  images: {
+                    select: {
+                      id: true,
+                      key: true,
+                      originalName: true,
+                    },
+                  },
                 },
               },
             },
@@ -244,16 +258,21 @@ export class OrdersService {
             telegramId: true,
           },
         },
-        products: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            images: {
+        orderItems: {
+          include: {
+            product: {
               select: {
                 id: true,
-                key: true,
-                originalName: true,
+                name: true,
+                price: true,
+                currency: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                    originalName: true,
+                  },
+                },
               },
             },
           },
@@ -294,16 +313,21 @@ export class OrdersService {
             telegramId: true,
           },
         },
-        products: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            images: {
+        orderItems: {
+          include: {
+            product: {
               select: {
                 id: true,
-                key: true,
-                originalName: true,
+                name: true,
+                price: true,
+                currency: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                    originalName: true,
+                  },
+                },
               },
             },
           },
@@ -359,7 +383,6 @@ export class OrdersService {
         customerId,
         details: customerDetails as Prisma.InputJsonValue,
         organizationId,
-        quantity: 1, // Default quantity, can be updated
         totalPrice: 0, // Will be calculated when products are assigned
       },
       include: {
@@ -411,28 +434,38 @@ export class OrdersService {
 
     const orders = await this.prisma.order.findMany({
       where: whereClause,
-      select: {
-        id: true,
-        status: true,
-        details: true,
-        createdAt: true,
-        customer: {
-          select: {
-            name: true,
-            telegramId: true,
+      include: {
+        orderItems: {
+          include: {
+            product: {
+              include: {
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                  },
+                },
+              },
+            },
           },
         },
+        customer: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 10, // Limit to recent orders for AI context
     });
-
     return orders.map((order) => ({
       id: order.id,
       status: order.status,
       details: order.details,
       createdAt: order.createdAt,
-      customer: order.customer,
+      customer: order.customerId,
+      items:
+        order.orderItems?.map((item: any) => ({
+          productName: item.product?.name || 'Unknown Product',
+          quantity: item.quantity,
+          price: item.price,
+        })) || [],
     }));
   }
 
@@ -445,6 +478,54 @@ export class OrdersService {
     organizationId: number,
   ): Promise<OrderResponseDto> {
     const { customerName, customerContact, items, notes } = aiResponse;
+
+    // Calculate total price from items if provided
+    let totalPrice = 0;
+    let quantity = 1;
+    const productIds: number[] = [];
+
+    if (Array.isArray(items) && items.length > 0) {
+      this.logger.log(`Processing ${items.length} items for order creation`);
+
+      // Calculate total price and quantity from items
+      totalPrice = items.reduce((sum: number, item: any) => {
+        const itemPrice = parseFloat(item.price) || 0;
+        const itemQuantity = parseInt(item.quantity) || 1;
+        this.logger.log(
+          `Item: productId=${item.productId}, price=${itemPrice}, quantity=${itemQuantity}`,
+        );
+        return sum + itemPrice * itemQuantity;
+      }, 0);
+
+      quantity = items.reduce((sum: number, item: any) => {
+        return sum + (parseInt(item.quantity) || 1);
+      }, 0);
+
+      // Extract product IDs for relation
+      const extractedIds = items
+        .map((item: any) => parseInt(item.productId))
+        .filter((id: number) => !isNaN(id));
+
+      productIds.push(...extractedIds);
+      this.logger.log(`Extracted product IDs: ${productIds.join(', ')}`);
+
+      // Validate that all products exist in the organization
+      if (productIds.length > 0) {
+        const existingProducts = await this.prisma.product.findMany({
+          where: {
+            id: { in: productIds },
+            organizationId,
+          },
+          select: { id: true },
+        });
+
+        if (existingProducts.length !== productIds.length) {
+          this.logger.warn(
+            `Some products not found. Requested: ${productIds.join(', ')}, Found: ${existingProducts.map((p) => p.id).join(', ')}`,
+          );
+        }
+      }
+    }
 
     // Extract customer details for storage in order.details
     const customerDetails = {
@@ -463,8 +544,17 @@ export class OrdersService {
         customerId: customer.id,
         details: customerDetails as Prisma.InputJsonValue,
         organizationId,
-        quantity: 1, // Default quantity, can be updated
-        totalPrice: 0, // Will be calculated when products are assigned
+        totalPrice,
+        orderItems:
+          items && items.length > 0
+            ? {
+                create: items.map((item: any) => ({
+                  productId: parseInt(item.productId),
+                  quantity: parseInt(item.quantity) || 1,
+                  price: parseFloat(item.price) || 0,
+                })),
+              }
+            : undefined,
       },
       include: {
         customer: {
@@ -475,16 +565,21 @@ export class OrdersService {
             telegramId: true,
           },
         },
-        products: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            images: {
+        orderItems: {
+          include: {
+            product: {
               select: {
                 id: true,
-                key: true,
-                originalName: true,
+                name: true,
+                price: true,
+                currency: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                    originalName: true,
+                  },
+                },
               },
             },
           },
@@ -493,7 +588,7 @@ export class OrdersService {
     });
 
     this.logger.log(
-      `Order created from AI response: ${order.id} for customer: ${customer.id}`,
+      `Order created from AI response: ${order.id} for customer: ${customer.id} with ${productIds.length} products`,
     );
     return this.mapOrderToResponse(order);
   }
@@ -520,16 +615,21 @@ export class OrdersService {
             telegramId: true,
           },
         },
-        products: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            images: {
+        orderItems: {
+          include: {
+            product: {
               select: {
                 id: true,
-                key: true,
-                originalName: true,
+                name: true,
+                price: true,
+                currency: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                    originalName: true,
+                  },
+                },
               },
             },
           },
@@ -586,16 +686,21 @@ export class OrdersService {
             telegramId: true,
           },
         },
-        products: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            images: {
+        orderItems: {
+          include: {
+            product: {
               select: {
                 id: true,
-                key: true,
-                originalName: true,
+                name: true,
+                price: true,
+                currency: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                    originalName: true,
+                  },
+                },
               },
             },
           },
@@ -660,16 +765,21 @@ export class OrdersService {
             telegramId: true,
           },
         },
-        products: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            images: {
+        orderItems: {
+          include: {
+            product: {
               select: {
                 id: true,
-                key: true,
-                originalName: true,
+                name: true,
+                price: true,
+                currency: true,
+                images: {
+                  select: {
+                    id: true,
+                    key: true,
+                    originalName: true,
+                  },
+                },
               },
             },
           },
@@ -703,6 +813,7 @@ export class OrdersService {
       quantity: order.quantity,
       totalPrice: order.totalPrice,
       products: order.products || [],
+      orderItems: order.orderItems || [],
     };
   }
 }

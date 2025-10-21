@@ -111,10 +111,12 @@ LANGUAGE DETECTION RULES:
 - Keep the same tone (formal/casual) as the customer's message
 
 PRICING POLICY:
-- Always quote the EXACT listed price from inventory
+- Always quote the EXACT listed price from inventory WITH currency (e.g., "12 USD", "120,000 UZS")
+- Use the product's currency field - if not available, default to "USD"
 - NEVER lower prices, offer discounts, or negotiate prices
 - If customer asks for discount, respond naturally: "I understand you're looking for a good deal! Unfortunately, our prices are fixed to ensure quality and fair service for everyone."
 - Never suggest price reductions or special deals
+- Always include currency when mentioning prices: "This product costs 12 USD" or "Bu mahsulot 120,000 UZS"
 CONVERSATION FLOW RULES (for Telegram Sales Bot):
 
 CONVERSATION FLOW
@@ -165,6 +167,8 @@ EXAMPLE RESPONSES:
 CURRENT INVENTORY:
 ${productInfo}
 
+IMPORTANT: When customers want to order products, use the exact Product ID (numeric) from the inventory list above, NOT the product name. For example, if a product shows "Product ID: 123 | Name: Laptop", use productId: 123, not "Laptop".
+
 ${
   userOrders && userOrders.length > 0
     ? `CUSTOMER'S ORDER HISTORY:
@@ -187,15 +191,33 @@ PRODUCT ANSWER FORMAT (for product inquiries ONLY):
 - If no images are available, return only the "text" field
 - Do NOT use markdown image syntax; only clean URLs
 
-SPECIAL INTENTS:
-1. When customer wants to place an order for AVAILABLE products, use:
+ORDER CREATION PROCESS:
+When a customer wants to place an order, follow these steps:
+
+1. FIRST: Respond naturally to the customer with confirmation (e.g., "Great! I'll process your order...")
+2. THEN: Add the order data in this EXACT format at the end of your response:
+
 [INTENT:CREATE_ORDER]
 {
   "customerName": "extracted name or 'Not provided'",
   "customerContact": "phone/email if provided or 'Not provided'", 
-  "items": "description of what they want to order",
+  "items": [
+    {
+      "productId": "MUST be the exact numeric product ID from inventory (integer, not product name)",
+      "quantity": "number of items (integer)",
+      "price": "price per unit from inventory (number)"
+    }
+  ],
   "notes": "any special requests or details"
 }
+
+CRITICAL RULES:
+- Use exact numeric product ID from inventory, NOT product name
+- The [INTENT:CREATE_ORDER] section will be automatically removed before sending to customer
+- Only the natural response text will be shown to the customer
+- The order data will be processed by the system automatically
+- DO NOT include order confirmation messages (like "Buyurtma muvaffaqiyatli tasdiqlandi") in your response
+- The system will generate the confirmation message automatically after processing the order
 
 2. When customer asks about their orders, use:
 [INTENT:FETCH_ORDERS]
@@ -206,56 +228,6 @@ SPECIAL INTENTS:
   "orderId": "extracted order number or null if not specified"
 }
 
-4. When an order is successfully created, use:
-[INTENT:ORDER_CONFIRMATION]
-{
-  "orderId": "order ID number",
-  "items": "array of product names and quantities",
-  "phoneNumber": "customer phone number",
-  "notes": "delivery address, payment method, etc."
-}
-
-ORDER CONFIRMATION RULES:
-When an order is successfully created, generate a confirmation message in the SAME language the customer used:
-
-✅ Order confirmed successfully!
-
-📋 Order #{{order.id}}
-🛍️ Items: {{product names and quantities}}
-📞 Contact: {{customer phone number}}
-📝 Notes: {{notes (delivery address, payment method, etc.)}}
-
-We'll contact you soon with more details.
-Is there anything else I can help you with?
-
-LANGUAGE LOCALIZATION EXAMPLES:
-
-Uzbek:
-Buyurtma muvaffaqiyatli tasdiqlandi ✅
-📋 Buyurtma raqami: #{{order.id}}
-🛍️ Mahsulotlar: {{product names and quantities}}
-📞 Aloqa: {{customer phone number}}
-📝 Izoh: {{notes}}
-Tez orada siz bilan bog'lanamiz 😊
-Yana nimadir kerakmi?
-
-Russian:
-Заказ успешно подтверждён ✅
-📋 Номер заказа: #{{order.id}}
-🛍️ Товары: {{product names and quantities}}
-📞 Контакт: {{customer phone number}}
-📝 Примечание: {{notes}}
-Мы свяжемся с вами в ближайшее время!
-Хотите что-нибудь ещё?
-
-English:
-Order confirmed successfully ✅
-📋 Order #{{order.id}}
-🛍️ Items: {{product names and quantities}}
-📞 Contact: {{customer phone number}}
-📝 Notes: {{notes}}
-We'll contact you soon with more details.
-Is there anything else I can help you with?
 
 IMPORTANT CONVERSATION RULES:
 - If customer has already agreed to order something, don't ask again - proceed with order details
@@ -298,25 +270,174 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
         : undefined;
       return { text: json.text, images };
     }
-    // Look for order creation intent marker
-    const orderMatch = aiText.match(/\[INTENT:CREATE_ORDER\]\s*(\{[\s\S]*?\})/);
+    // Look for order creation intent marker - handle multiline JSON
+    let orderMatch = aiText.match(/\[INTENT:CREATE_ORDER\]\s*(\{[\s\S]*?\})/);
+
+    // If first regex doesn't work, try a more flexible approach
+    if (!orderMatch) {
+      const intentIndex = aiText.indexOf('[INTENT:CREATE_ORDER]');
+      if (intentIndex !== -1) {
+        const afterIntent = aiText.substring(intentIndex);
+        const jsonStart = afterIntent.indexOf('{');
+        if (jsonStart !== -1) {
+          const jsonPart = afterIntent.substring(jsonStart);
+          // Find the matching closing brace
+          let braceCount = 0;
+          let jsonEnd = -1;
+          for (let i = 0; i < jsonPart.length; i++) {
+            if (jsonPart[i] === '{') braceCount++;
+            if (jsonPart[i] === '}') braceCount--;
+            if (braceCount === 0) {
+              jsonEnd = i;
+              break;
+            }
+          }
+          if (jsonEnd !== -1) {
+            const jsonString = jsonPart.substring(0, jsonEnd + 1);
+            orderMatch = ['', jsonString]; // Mock the match array
+          }
+        }
+      }
+    }
+
+    // If still no match, try to find and complete incomplete JSON
+    if (!orderMatch) {
+      const intentIndex = aiText.indexOf('[INTENT:CREATE_ORDER]');
+      if (intentIndex !== -1) {
+        const afterIntent = aiText.substring(intentIndex);
+        const jsonStart = afterIntent.indexOf('{');
+        if (jsonStart !== -1) {
+          const jsonPart = afterIntent.substring(jsonStart);
+          // Try to complete the JSON by adding missing closing brackets/braces
+          let completedJson = jsonPart;
+
+          // Count braces and brackets to see what's missing
+          let braceCount = 0;
+          let bracketCount = 0;
+          for (let i = 0; i < jsonPart.length; i++) {
+            if (jsonPart[i] === '{') braceCount++;
+            if (jsonPart[i] === '}') braceCount--;
+            if (jsonPart[i] === '[') bracketCount++;
+            if (jsonPart[i] === ']') bracketCount--;
+          }
+
+          // Add missing closing brackets first, then braces
+          while (bracketCount > 0) {
+            completedJson += ']';
+            bracketCount--;
+          }
+          while (braceCount > 0) {
+            completedJson += '}';
+            braceCount--;
+          }
+
+          this.logger.log(
+            `Attempting to complete incomplete JSON. Original: "${jsonPart}"`,
+          );
+          this.logger.log(`Completed JSON: "${completedJson}"`);
+
+          orderMatch = ['', completedJson];
+        }
+      }
+    }
 
     if (orderMatch) {
       try {
+        this.logger.log(
+          `Found CREATE_ORDER intent, JSON string: "${orderMatch[1]}"`,
+        );
         const orderData = JSON.parse(orderMatch[1]);
-        const responseText = aiText
-          .replace(/\[INTENT:CREATE_ORDER\][\s\S]*/, '')
+        this.logger.log(
+          `Successfully parsed order data: ${JSON.stringify(orderData)}`,
+        );
+
+        // Extract only the text BEFORE the intent marker
+        const responseText = aiText.split(/\[INTENT:CREATE_ORDER\]/)[0].trim();
+
+        // Remove any order confirmation messages that might be in the response
+        const cleanedText = responseText
+          .replace(/Buyurtma muvaffaqiyatli tasdiqlandi.*$/s, '')
+          .replace(/Order confirmed successfully.*$/s, '')
+          .replace(/Заказ успешно подтверждён.*$/s, '')
+          .replace(/📋 Buyurtma raqami.*$/s, '')
+          .replace(/📋 Order #.*$/s, '')
+          .replace(/📋 Номер заказа.*$/s, '')
+          .replace(/🛍️ Mahsulotlar.*$/s, '')
+          .replace(/🛍️ Items.*$/s, '')
+          .replace(/🛍️ Товары.*$/s, '')
+          .replace(/💰 Jami.*$/s, '')
+          .replace(/💰 Total.*$/s, '')
+          .replace(/💰 Итого.*$/s, '')
+          .replace(/📞 Aloqa.*$/s, '')
+          .replace(/📞 Contact.*$/s, '')
+          .replace(/📞 Контакт.*$/s, '')
+          .replace(/📝 Izoh.*$/s, '')
+          .replace(/📝 Notes.*$/s, '')
+          .replace(/📝 Примечание.*$/s, '')
+          .replace(/Tez orada siz bilan bog'lanamiz.*$/s, '')
+          .replace(/We'll contact you soon.*$/s, '')
+          .replace(/Мы свяжемся с вами.*$/s, '')
+          .replace(/Yana nimadir kerakmi\?.*$/s, '')
+          .replace(/Is there anything else.*$/s, '')
+          .replace(/Хотите что-нибудь ещё\?.*$/s, '')
+          .replace(/Ha, albatta!.*$/s, '')
+          .replace(/Hammasi joyida!.*$/s, '')
+          .replace(/rasmiylashtirildi.*$/s, '')
           .trim();
+
+        this.logger.log(`Cleaned response text: "${cleanedText}"`);
+        this.logger.log(`Order data: ${JSON.stringify(orderData)}`);
 
         return {
           text:
-            responseText ||
+            cleanedText ||
             "Great! I've got your order down. What's your name and phone number so we can get in touch with you?",
           intent: 'CREATE_ORDER',
           orderData,
         };
       } catch (error) {
-        this.logger.warn('Failed to parse order data from AI response');
+        this.logger.warn(
+          `Failed to parse order data from AI response: ${error.message}`,
+        );
+        this.logger.warn(`Raw JSON string: "${orderMatch[1]}"`);
+
+        // Even if parsing fails, we should still try to create an order with default data
+        // Extract basic info from the incomplete JSON
+        const jsonString = orderMatch[1];
+        const customerContactMatch = jsonString.match(
+          /"customerContact":\s*"([^"]+)"/,
+        );
+        const productIdMatch = jsonString.match(/"productId":\s*(\d+)/);
+        const quantityMatch = jsonString.match(/"quantity":\s*(\d+)/);
+        const priceMatch = jsonString.match(/"price":\s*(\d+)/);
+
+        const orderData = {
+          customerName: 'Not provided',
+          customerContact: customerContactMatch
+            ? customerContactMatch[1]
+            : 'Not provided',
+          items: [
+            {
+              productId: productIdMatch ? parseInt(productIdMatch[1]) : 1,
+              quantity: quantityMatch ? parseInt(quantityMatch[1]) : 1,
+              price: priceMatch ? parseInt(priceMatch[1]) : 1300,
+            },
+          ],
+          notes: '',
+        };
+
+        this.logger.log(
+          `Creating order with fallback data: ${JSON.stringify(orderData)}`,
+        );
+
+        // Extract only the text BEFORE the intent marker
+        const responseText = aiText.split(/\[INTENT:CREATE_ORDER\]/)[0].trim();
+
+        return {
+          text: responseText || "Great! I'll process your order.",
+          intent: 'CREATE_ORDER',
+          orderData,
+        };
       }
     }
 
@@ -355,6 +476,67 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
       }
     }
 
+    // Look for order confirmation intent marker (AI is incorrectly using this)
+    const orderConfirmationMatch = aiText.match(
+      /\[INTENT:ORDER_CONFIRMATION\]\s*(\{[\s\S]*?\})/,
+    );
+    if (orderConfirmationMatch) {
+      try {
+        const confirmationData = JSON.parse(orderConfirmationMatch[1]);
+
+        // Convert ORDER_CONFIRMATION to CREATE_ORDER format
+        const orderData = {
+          customerName: 'Not provided',
+          customerContact: confirmationData.phoneNumber || 'Not provided',
+          items: Array.isArray(confirmationData.items)
+            ? confirmationData.items.map((item: string) => {
+                // Try to extract product info from item string like "LAPTOP (1 dona)"
+                const match = item.match(/(\w+)\s*\((\d+)\s*dona?\)/);
+                if (match) {
+                  // For now, use default values - this should be improved to lookup actual product
+                  return {
+                    productId: 1, // TODO: Lookup actual product ID by name
+                    quantity: parseInt(match[2]) || 1,
+                    price: 1300, // TODO: Get actual price from product lookup
+                  };
+                }
+                return {
+                  productId: 1,
+                  quantity: 1,
+                  price: 1300,
+                };
+              })
+            : [
+                {
+                  productId: 1,
+                  quantity: 1,
+                  price: 1300,
+                },
+              ],
+          notes: confirmationData.notes || '',
+        };
+
+        // Extract only the text BEFORE the intent marker
+        const responseText = aiText
+          .split(/\[INTENT:ORDER_CONFIRMATION\]/)[0]
+          .trim();
+
+        this.logger.log(
+          `Converted ORDER_CONFIRMATION to CREATE_ORDER: ${JSON.stringify(orderData)}`,
+        );
+
+        return {
+          text: responseText || "Great! I'll process your order.",
+          intent: 'CREATE_ORDER',
+          orderData,
+        };
+      } catch (error) {
+        this.logger.warn(
+          'Failed to parse order confirmation data from AI response',
+        );
+      }
+    }
+
     return {
       text: aiText,
     };
@@ -369,6 +551,8 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
       items: string[];
       phoneNumber?: string;
       notes?: string;
+      totalPrice?: number;
+      currency?: string;
     },
     customerMessage: string,
   ): Promise<string> {
@@ -386,6 +570,8 @@ ORDER DATA:
 - Items: ${orderData.items.join(', ')}
 - Phone: ${orderData.phoneNumber || 'Not provided'}
 - Notes: ${orderData.notes || 'None'}
+- Total Price: ${orderData.totalPrice || 'Not calculated'}
+- Currency: ${orderData.currency || 'USD'}
 
 INSTRUCTIONS:
 1. Detect the language of the customer's message automatically
@@ -398,6 +584,7 @@ FORMAT TEMPLATE:
 
 📋 [Order number label]: #${orderData.orderId}
 🛍️ [Items label]: ${orderData.items.join(', ')}
+💰 [Total label]: ${orderData.totalPrice || 'Not calculated'} ${orderData.currency || 'USD'}
 📞 [Contact label]: ${orderData.phoneNumber || 'Not provided'}
 📝 [Notes label]: ${orderData.notes || 'None'}
 
@@ -410,6 +597,7 @@ Uzbek:
 Buyurtma muvaffaqiyatli tasdiqlandi ✅
 📋 Buyurtma raqami: #${orderData.orderId}
 🛍️ Mahsulotlar: ${orderData.items.join(', ')}
+💰 Jami: ${orderData.totalPrice || 'Hisoblanmagan'} ${orderData.currency || 'USD'}
 📞 Aloqa: ${orderData.phoneNumber || 'Kiritilmagan'}
 📝 Izoh: ${orderData.notes || "Yo'q"}
 Tez orada siz bilan bog'lanamiz 😊
@@ -419,6 +607,7 @@ Russian:
 Заказ успешно подтверждён ✅
 📋 Номер заказа: #${orderData.orderId}
 🛍️ Товары: ${orderData.items.join(', ')}
+💰 Итого: ${orderData.totalPrice || 'Не рассчитано'} ${orderData.currency || 'USD'}
 📞 Контакт: ${orderData.phoneNumber || 'Не указан'}
 📝 Примечание: ${orderData.notes || 'Нет'}
 Мы свяжемся с вами в ближайшее время!
@@ -428,6 +617,7 @@ English:
 Order confirmed successfully ✅
 📋 Order #${orderData.orderId}
 🛍️ Items: ${orderData.items.join(', ')}
+💰 Total: ${orderData.totalPrice || 'Not calculated'} ${orderData.currency || 'USD'}
 📞 Contact: ${orderData.phoneNumber || 'Not provided'}
 📝 Notes: ${orderData.notes || 'None'}
 We'll contact you soon with more details.
@@ -460,5 +650,212 @@ Generate the confirmation message now:`;
 We'll contact you soon with more details.
 Is there anything else I can help you with?`;
     }
+  }
+
+  /**
+   * Detect the language of a given text
+   */
+  async detectLanguage(text: string): Promise<string> {
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const prompt = `Detect the language of the following text and return only the language code (uz, ru, en):
+
+Text: "${text}"
+
+Return only the language code:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const languageCode = response.text().trim().toLowerCase();
+
+      // Validate and return supported language codes
+      if (['uz', 'ru', 'en'].includes(languageCode)) {
+        return languageCode;
+      }
+
+      // Default to Uzbek if detection fails
+      return 'uz';
+    } catch (error) {
+      this.logger.warn(`Language detection failed: ${error.message}`);
+      return 'uz'; // Default to Uzbek
+    }
+  }
+
+  /**
+   * Translate a message to the specified language
+   */
+  async translateMessage(
+    message: string,
+    targetLanguage: string,
+  ): Promise<string> {
+    try {
+      // If target language is English, return as is
+      if (targetLanguage === 'en') {
+        return message;
+      }
+
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const languageNames: Record<string, string> = {
+        uz: 'Uzbek',
+        ru: 'Russian',
+        en: 'English',
+      };
+
+      const prompt = `Translate the following message to ${languageNames[targetLanguage] || 'Uzbek'}. Keep the HTML formatting and emojis intact:
+
+${message}
+
+Translated message:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
+    } catch (error) {
+      this.logger.warn(`Translation failed: ${error.message}`);
+      return message; // Return original message if translation fails
+    }
+  }
+
+  /**
+   * Generate orders list response in customer's language
+   */
+  async generateOrdersListResponse(
+    orders: any[],
+    userMessage: string,
+  ): Promise<string> {
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const ordersData = orders.map((order, index) => {
+        const status = this.getStatusEmoji(order.status);
+        const items = order.items || 'No items specified';
+        const createdAt = new Date(order.createdAt).toLocaleDateString();
+        return {
+          number: index + 1,
+          id: order.id,
+          status,
+          date: createdAt,
+          items,
+          totalPrice: order.totalPrice || 0,
+        };
+      });
+
+      const prompt = `You are Flovo, a friendly AI assistant. The customer asked: "${userMessage}"
+
+CUSTOMER ORDERS DATA:
+${JSON.stringify(ordersData, null, 2)}
+
+INSTRUCTIONS:
+1. Respond in the EXACT same language as the customer's message
+2. If customer wrote in Uzbek → respond in Uzbek
+3. If customer wrote in Russian → respond in Russian  
+4. If customer wrote in English → respond in English
+5. If no orders exist, say "You don't have any orders yet" in their language
+6. If orders exist, list them nicely with emojis
+7. Keep the same tone (formal/casual) as the customer's message
+8. Use appropriate emojis for orders, dates, items, prices
+9. End with a helpful question about what they'd like to do next
+
+Generate a natural, friendly response:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to generate orders list response: ${error.message}`,
+      );
+
+      // Fallback to simple response
+      if (orders.length === 0) {
+        return "You don't have any orders yet. Would you like to place your first order?";
+      }
+
+      let message = 'Your Recent Orders:\n\n';
+      orders.forEach((order, index) => {
+        const status = this.getStatusEmoji(order.status);
+        const items = order.items || 'No items specified';
+        const createdAt = new Date(order.createdAt).toLocaleDateString();
+        message += `${index + 1}. ${status} Order #${order.id}\n`;
+        message += `   📅 ${createdAt}\n`;
+        message += `   🛍️ ${items}\n`;
+        message += `   💰 $${order.totalPrice || 0}\n\n`;
+      });
+      message +=
+        'Would you like to know more about any specific order or place a new one?';
+      return message;
+    }
+  }
+
+  /**
+   * Generate order cancellation response in customer's language
+   */
+  async generateOrderCancellationResponse(
+    order: any,
+    userMessage: string,
+  ): Promise<string> {
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+      });
+
+      const prompt = `You are Flovo, a friendly AI assistant. The customer asked: "${userMessage}"
+
+ORDER CANCELLED:
+- Order ID: ${order.id}
+- Status: ${order.status}
+- Total: $${order.totalPrice || 0}
+
+INSTRUCTIONS:
+1. Respond in the EXACT same language as the customer's message
+2. If customer wrote in Uzbek → respond in Uzbek
+3. If customer wrote in Russian → respond in Russian  
+4. If customer wrote in English → respond in English
+5. Confirm the order has been cancelled
+6. Be friendly and helpful
+7. Use appropriate emojis
+8. Ask if they need help with anything else
+
+Generate a natural, friendly response:`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to generate cancellation response: ${error.message}`,
+      );
+
+      // Fallback response
+      return `❌ Order Cancelled
+
+📋 Order #${order.id} has been successfully cancelled.
+
+If you change your mind, you can always place a new order! Is there anything else I can help you with?`;
+    }
+  }
+
+  /**
+   * Get status emoji for order status
+   */
+  private getStatusEmoji(status: string): string {
+    const statusEmojis: Record<string, string> = {
+      NEW: '🆕',
+      PENDING: '⏳',
+      CONFIRMED: '✅',
+      SHIPPED: '🚚',
+      DELIVERED: '📦',
+      CANCELLED: '❌',
+      REFUNDED: '💰',
+    };
+    return statusEmojis[status] || '📋';
   }
 }

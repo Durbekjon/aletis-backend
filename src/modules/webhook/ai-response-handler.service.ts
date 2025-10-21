@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersService } from '@modules/orders/orders.service';
 import { AiResponse, GeminiService } from '@core/gemini/gemini.service';
-import { Customer } from '@prisma/client';
+import { Customer, Order } from '@prisma/client';
 
 export interface ProcessedAiResponse {
   text: string;
@@ -44,6 +44,7 @@ export class AiResponseHandlerService {
             aiResponse,
             customer,
             organizationId,
+            originalUserMessage,
           );
 
         case 'CANCEL_ORDER':
@@ -51,6 +52,7 @@ export class AiResponseHandlerService {
             aiResponse,
             customer,
             organizationId,
+            originalUserMessage,
           );
 
         default:
@@ -93,22 +95,68 @@ export class AiResponseHandlerService {
     }
 
     try {
+      this.logger.log(
+        `Creating order with data: ${JSON.stringify(aiResponse.orderData)}`,
+      );
       const order = await this.ordersService.createFromAIResponse(
         aiResponse.orderData,
         customer,
         organizationId,
       );
+      this.logger.log(`Order created successfully: ${order.id}`);
+
+      // Convert items to product names for confirmation message
+      let itemNames: string[] = [];
+      this.logger.log(
+        `Order details items: ${JSON.stringify(order.details?.items)}`,
+      );
+      this.logger.log(`Order orderItems: ${JSON.stringify(order.orderItems)}`);
+
+      // Use the new OrderItem structure
+      if (order.orderItems && Array.isArray(order.orderItems)) {
+        itemNames = order.orderItems.map((orderItem: any) => {
+          const productName = orderItem.product?.name || 'Unknown Product';
+          const quantity = orderItem.quantity || 1;
+          return `${productName} (${quantity} qty)`;
+        });
+        this.logger.log(
+          `Using orderItems product names: ${itemNames.join(', ')}`,
+        );
+      } else if (Array.isArray(order.details?.items)) {
+        // Fallback to old structure if orderItems not available
+        if (
+          order.details.items.length > 0 &&
+          typeof order.details.items[0] === 'object'
+        ) {
+          itemNames = order.details.items.map(
+            (item: any) =>
+              `Product ID ${item.productId} (${item.quantity} qty)`,
+          );
+          this.logger.log(
+            `Using fallback product names: ${itemNames.join(', ')}`,
+          );
+        } else {
+          itemNames = order.details.items;
+          this.logger.log(`Using items as strings: ${itemNames.join(', ')}`);
+        }
+      } else if (order.details?.items) {
+        itemNames = [order.details.items];
+        this.logger.log(`Using single item: ${itemNames.join(', ')}`);
+      } else {
+        itemNames = ['To be specified'];
+        this.logger.log(`Using default item name: ${itemNames.join(', ')}`);
+      }
 
       // Generate confirmation message using Gemini with automatic language detection
       const confirmationMessage =
         await this.geminiService.generateOrderConfirmation(
           {
             orderId: order.id,
-            items: Array.isArray(order.details?.items)
-              ? order.details.items
-              : [order.details?.items || 'To be specified'],
+            items: itemNames,
             phoneNumber: order.details?.phoneNumber,
             notes: order.details?.notes,
+            totalPrice: order.totalPrice,
+            currency: 'USD', // Default currency, can be enhanced to get from products
           },
           originalUserMessage || '',
         );
@@ -141,6 +189,7 @@ export class AiResponseHandlerService {
     aiResponse: AiResponse,
     customer: Customer,
     organizationId: number,
+    originalUserMessage?: string,
   ): Promise<ProcessedAiResponse> {
     try {
       const orders = await this.ordersService.getOrdersForCustomer(
@@ -149,7 +198,11 @@ export class AiResponseHandlerService {
         5, // Last 5 orders
       );
 
-      const ordersMessage = this.buildOrdersListMessage(orders);
+      // Generate AI response for orders list in customer's language
+      const ordersMessage = await this.geminiService.generateOrdersListResponse(
+        orders,
+        originalUserMessage || 'Show my orders',
+      );
 
       this.logger.log(`Orders fetched via AI for customer: ${customer.id}`);
 
@@ -176,6 +229,7 @@ export class AiResponseHandlerService {
     aiResponse: AiResponse,
     customer: Customer,
     organizationId: number,
+    originalUserMessage?: string,
   ): Promise<ProcessedAiResponse> {
     // Extract order ID from the AI response or order data
     const orderId =
@@ -195,7 +249,12 @@ export class AiResponseHandlerService {
         organizationId,
       );
 
-      const cancellationMessage = this.buildOrderCancellationMessage(order);
+      // Generate AI response for order cancellation in customer's language
+      const cancellationMessage =
+        await this.geminiService.generateOrderCancellationResponse(
+          order,
+          originalUserMessage || 'Cancel my order',
+        );
 
       this.logger.log(
         `Order cancelled via AI: ${order.id} for customer: ${customer.id}`,
@@ -229,45 +288,6 @@ export class AiResponseHandlerService {
         text: errorMessage,
       };
     }
-  }
-
-  /**
-   * Build orders list message
-   */
-  private buildOrdersListMessage(orders: any[]): string {
-    if (orders.length === 0) {
-      return `📋 <b>Your Orders</b>
-
-You don't have any orders yet. Would you like to place your first order? I can help you find the perfect products!`;
-    }
-
-    let message = `📋 <b>Your Recent Orders</b>\n\n`;
-
-    orders.forEach((order, index) => {
-      const status = this.getStatusEmoji(order.status);
-      const items = order.details?.items || 'No items specified';
-      const createdAt = new Date(order.createdAt).toLocaleDateString();
-
-      message += `${index + 1}. ${status} <b>Order #${order.id}</b>\n`;
-      message += `   📅 ${createdAt}\n`;
-      message += `   🛍️ ${items}\n`;
-      message += `   💰 $${order.totalPrice || 0}\n\n`;
-    });
-
-    message += `Would you like to know more about any specific order or place a new one?`;
-
-    return message;
-  }
-
-  /**
-   * Build order cancellation message
-   */
-  private buildOrderCancellationMessage(order: any): string {
-    return `❌ <b>Order Cancelled</b>
-
-📋 <b>Order #${order.id}</b> has been successfully cancelled.
-
-If you change your mind, you can always place a new order! Is there anything else I can help you with?`;
   }
 
   /**

@@ -1046,7 +1046,7 @@ export class ProductsService {
         const imagesStr =
           imageKeys.length > 0 ? ` | Images: [${imageKeys.join(', ')}]` : '';
 
-        return `Product: ${p.name} | Price: ${p.price} | Qty: ${p.quantity || 1} | Fields: {${fieldsStr}}${imagesStr}`;
+        return `Product ID: ${p.id} | Name: ${p.name} | Price: ${p.price} ${p.currency || 'USD'} | Qty: ${p.quantity || 1} | Fields: {${fieldsStr}}${imagesStr}`;
       })
       .join('\n');
   }

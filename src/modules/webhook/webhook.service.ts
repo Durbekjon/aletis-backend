@@ -141,40 +141,98 @@ export class WebhookService {
         };
 
         if (images && images.length > 0) {
-          const firstPhoto = toAbsolute(images[0]);
-          const extraLinks = images.slice(1, 3).map(toAbsolute);
-          const extraText =
-            extraLinks.length > 0 ? `\n\n${extraLinks.join('\n')}` : '';
-          let caption = `${processedResponse.text}${extraText}`;
-          if (caption.length > 1024) caption = caption.slice(0, 1010) + '...';
+          // If multiple images, use sendMediaGroup (max 10 images)
+          if (images.length > 1) {
+            const mediaGroup = images.slice(0, 10).map((imageUrl, index) => {
+              const absoluteUrl = toAbsolute(imageUrl);
+              return {
+                type: 'photo',
+                media: absoluteUrl,
+                // Only add caption to the first image
+                ...(index === 0 && {
+                  caption: (() => {
+                    const cleanedText = processedResponse.text
+                      .replace(/\[INTENT:CREATE_ORDER\][\s\S]*$/g, '')
+                      .replace(/\[INTENT:ORDER_CONFIRMATION\][\s\S]*$/g, '')
+                      .replace(/\[INTENT:FETCH_ORDERS\][\s\S]*$/g, '')
+                      .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*$/g, '')
+                      .trim();
+                    return cleanedText.length > 1024 
+                      ? cleanedText.slice(0, 1010) + '...' 
+                      : cleanedText;
+                  })(),
+                  parse_mode: 'HTML'
+                })
+              };
+            });
 
-          const res = await this.telegramService.sendRequest(
-            decryptedToken,
-            'sendPhoto',
-            {
-              chat_id: customer.telegramId,
-              photo: firstPhoto,
-              caption,
-              parse_mode: 'HTML',
-            },
-          );
-
-          if (!res.ok) {
-            this.logger.error(
-              `Failed to send photo with caption to customer ${customer.id}: ${res.description || 'Unknown error'}`,
+            const res = await this.telegramService.sendRequest(
+              decryptedToken,
+              'sendMediaGroup',
+              {
+                chat_id: customer.telegramId,
+                media: mediaGroup,
+              },
             );
+
+            if (!res.ok) {
+              this.logger.error(
+                `Failed to send media group to customer ${customer.id}: ${res.description || 'Unknown error'}`,
+              );
+            } else {
+              this.logger.log(
+                `AI media group sent to customer ${customer.id}: ${images.length} images with caption "${processedResponse.text.substring(0, 50)}${processedResponse.text.length > 50 ? '...' : ''}"`,
+              );
+            }
           } else {
-            this.logger.log(
-              `AI photo+caption sent to customer ${customer.id}: "${processedResponse.text.substring(0, 50)}${processedResponse.text.length > 50 ? '...' : ''}"`,
+            // Single image - use sendPhoto
+            const firstPhoto = toAbsolute(images[0]);
+            let caption = processedResponse.text
+              .replace(/\[INTENT:CREATE_ORDER\][\s\S]*$/g, '')
+              .replace(/\[INTENT:ORDER_CONFIRMATION\][\s\S]*$/g, '')
+              .replace(/\[INTENT:FETCH_ORDERS\][\s\S]*$/g, '')
+              .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*$/g, '')
+              .trim();
+            if (caption.length > 1024) caption = caption.slice(0, 1010) + '...';
+
+            const res = await this.telegramService.sendRequest(
+              decryptedToken,
+              'sendPhoto',
+              {
+                chat_id: customer.telegramId,
+                photo: firstPhoto,
+                caption,
+                parse_mode: 'HTML',
+              },
             );
+
+            if (!res.ok) {
+              this.logger.error(
+                `Failed to send photo with caption to customer ${customer.id}: ${res.description || 'Unknown error'}`,
+              );
+            } else {
+              this.logger.log(
+                `AI photo+caption sent to customer ${customer.id}: "${processedResponse.text.substring(0, 50)}${processedResponse.text.length > 50 ? '...' : ''}"`,
+              );
+            }
           }
         } else {
+          // Clean the response to remove any technical code that might have leaked through
+          const cleanedText = processedResponse.text
+            .replace(/\[INTENT:CREATE_ORDER\][\s\S]*$/g, '')
+            .replace(/\[INTENT:ORDER_CONFIRMATION\][\s\S]*$/g, '')
+            .replace(/\[INTENT:FETCH_ORDERS\][\s\S]*$/g, '')
+            .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*$/g, '')
+            .trim();
+
+          const htmlMessage = this.markdownToHtml(cleanedText);
+          console.log({ htmlMessage });
           const res = await this.telegramService.sendRequest(
             decryptedToken,
             'sendMessage',
             {
               chat_id: customer.telegramId,
-              text: processedResponse.text,
+              text: htmlMessage,
               parse_mode: 'HTML',
             },
           );
@@ -210,6 +268,11 @@ export class WebhookService {
     }
   }
 
+  private markdownToHtml(text: string): string {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') // bold
+      .replace(/_(.*?)_/g, '<i>$1</i>'); // italic
+  }
   private async getCustomerFromWebhook(
     webhookData: WebhookDto,
     botId: number,
