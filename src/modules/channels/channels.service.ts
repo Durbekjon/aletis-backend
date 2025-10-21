@@ -234,10 +234,9 @@ export class ChannelsService {
     });
 
     const response = await fetch(url);
-
     if (!response.ok) {
-      throw new Error(
-        `Telegram API request failed with status ${response.status}`,
+      throw new NotFoundException(
+        `Channel @${username} not found or bot (${bot.username}) cannot access it`,
       );
     }
 

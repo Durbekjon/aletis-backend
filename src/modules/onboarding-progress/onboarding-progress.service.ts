@@ -47,6 +47,19 @@ export class OnboardingProgressService {
     return onboardingProgress;
   }
 
+  async getOnboardingProgress(userId: number): Promise<any> {
+    const organization = await this.prisma.member.findUnique({
+      where: { userId, role: MemberRole.ADMIN },
+      select: { organizationId: true },
+    });
+    if (!organization)
+      throw new NotFoundException('User is not a member of any organization');
+    const onboardingProgress = await this.prisma.onboardingProgress.findUnique({
+      where: { organizationId: organization.organizationId },
+    });
+    return onboardingProgress;
+  }
+
   async handleNextStep(
     userId: number,
     step: OnboardingStep,
