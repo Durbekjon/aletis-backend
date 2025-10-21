@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus } from '@prisma/client';
 
 export class CustomerInfoDto {
   @ApiProperty({ description: 'Customer ID', example: 1 })
@@ -8,7 +8,10 @@ export class CustomerInfoDto {
   @ApiProperty({ description: 'Customer name', example: 'John Doe' })
   name: string;
 
-  @ApiPropertyOptional({ description: 'Customer Telegram username', example: 'johndoe' })
+  @ApiPropertyOptional({
+    description: 'Customer Telegram username',
+    example: 'johndoe',
+  })
   username?: string;
 
   @ApiProperty({ description: 'Customer Telegram ID', example: '123456789' })
@@ -18,6 +21,9 @@ export class CustomerInfoDto {
 export class OrderResponseDto {
   @ApiProperty({ description: 'Order ID', example: 1 })
   id: number;
+
+  @ApiProperty({ description: 'Order number', example: 'ORD-001' })
+  orderNumber: string;
 
   @ApiProperty({
     description: 'Order creation date',
@@ -37,6 +43,13 @@ export class OrderResponseDto {
     example: OrderStatus.NEW,
   })
   status: OrderStatus;
+
+  @ApiProperty({
+    description: 'Order payment status',
+    enum: PaymentStatus,
+    example: PaymentStatus.PENDING,
+  })
+  paymentStatus: PaymentStatus;
 
   @ApiPropertyOptional({ description: 'Associated customer information' })
   customer?: CustomerInfoDto;
@@ -62,6 +75,12 @@ export class OrderResponseDto {
   @ApiProperty({ description: 'Total order price', example: 1500.5 })
   totalPrice: number;
 
+  @ApiPropertyOptional({ description: 'Discount amount', example: 50.0 })
+  discountAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Discount percentage', example: 10 })
+  discountPercentage?: number;
+
   @ApiProperty({ description: 'Associated products', type: [Object] })
   products: any[];
 
@@ -70,4 +89,10 @@ export class OrderResponseDto {
     type: [Object],
   })
   orderItems: any[];
+
+  @ApiPropertyOptional({
+    description: 'Tracking number for shipped orders',
+    example: 'TRK123456789',
+  })
+  trackingNumber?: string;
 }
