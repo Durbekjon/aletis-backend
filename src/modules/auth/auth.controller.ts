@@ -189,7 +189,33 @@ export class AuthController {
     const url = new URL(frontendRedirectBase);
     url.searchParams.set('bearer', result.accessToken);
     url.searchParams.set('refresh', result.refreshToken);
-    url.searchParams.set('isNew', String(result.isNew));
+    url.searchParams.set('hasOrganization', String(result.hasOrganization));
+    if (result.hasOrganization && result.organization) {
+      url.searchParams.set('orgId', String(result.organization.id));
+      url.searchParams.set('orgName', result.organization.name);
+
+      // Include onboarding progress as separate params (or serialize as JSON if not too big)
+      if (result.organization.onboardingProgress) {
+        const onboarding = result.organization.onboardingProgress;
+        url.searchParams.set('onboardPercent', String(onboarding.percentage));
+        url.searchParams.set('onboardStep', onboarding.nextStep || '');
+        url.searchParams.set('onboardStatus', onboarding.status || '');
+        // Optionally, add other booleans for step feature flags
+        url.searchParams.set('onboardBot', String(onboarding.isBotConnected));
+        url.searchParams.set(
+          'onboardProduct',
+          String(onboarding.isFirstProductAdded),
+        );
+        url.searchParams.set(
+          'onboardCategory',
+          String(onboarding.isCategorySelected),
+        );
+        url.searchParams.set(
+          'onboardSchema',
+          String(onboarding.isSchemaConfigured),
+        );
+      }
+    }
 
     return res.redirect(url.toString());
   }

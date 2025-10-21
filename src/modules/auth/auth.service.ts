@@ -11,7 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import crypto from 'node:crypto';
 import { JwtPayload } from './strategies/jwt.strategy';
-import { User } from '@prisma/client';
+import { AuthResponse } from './dto/auth-response.dto';
 
 type Tokens = { accessToken: string; refreshToken: string };
 @Injectable()
@@ -48,20 +48,51 @@ export class AuthService {
     return tokens;
   }
 
-  async login(email: string, password: string): Promise<Tokens> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async login(email: string, password: string): Promise<AuthResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        member: {
+          include: {
+            organization: {
+              include: { onboardingProgress: true },
+            },
+          },
+        },
+      },
+    });
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
-
     const tokens = await this.issueTokens(user.id);
     await this.updateUserRefreshTokenHash(user.id, tokens.refreshToken);
-    return tokens;
+    const org = user.member?.organization;
+    return {
+      ...tokens,
+      hasOrganization: !!org,
+      ...(org && {
+        organization: {
+          id: org.id,
+          name: org.name,
+          onboardingProgress: org.onboardingProgress
+            ? {
+                id: org.onboardingProgress.id,
+                percentage: org.onboardingProgress.percentage,
+                isCategorySelected: org.onboardingProgress.isCategorySelected,
+                isSchemaConfigured: org.onboardingProgress.isSchemaConfigured,
+                isFirstProductAdded: org.onboardingProgress.isFirstProductAdded,
+                isBotConnected: org.onboardingProgress.isBotConnected,
+                nextStep: org.onboardingProgress.nextStep,
+                status: org.onboardingProgress.status,
+              }
+            : null,
+        },
+      }),
+    };
   }
 
   async refreshTokens(userId: number, refreshToken: string): Promise<Tokens> {
@@ -117,27 +148,16 @@ export class AuthService {
     return { resetToken };
   }
 
-  async handleGoogleLogin(payload: any): Promise<
-    Tokens & {
-      user: {
-        id: number;
-        firstName: string | null;
-        lastName: string | null;
-        email: string;
-      };
-      isNew: boolean;
-    }
-  > {
+  async handleGoogleLogin(
+    payload: any,
+  ): Promise<AuthResponse> {
     if (!payload.email) {
       throw new UnauthorizedException('Google account has no email');
     }
-
     const existing = await this.prisma.user.findUnique({
       where: { email: payload.email },
     });
     let userId: number;
-    let isNew = false;
-
     if (existing) {
       userId = existing.id;
     } else {
@@ -151,17 +171,44 @@ export class AuthService {
         },
       });
       userId = created.id;
-      isNew = true;
     }
-
     const tokens = await this.issueTokens(userId);
     await this.updateUserRefreshTokenHash(userId, tokens.refreshToken);
-
-    const user = await this.prisma.user.findUnique({
+    const userWithOrg = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, firstName: true, lastName: true, email: true },
+      include: {
+        member: {
+          include: {
+            organization: {
+              include: { onboardingProgress: true },
+            },
+          },
+        },
+      },
     });
-    return { ...tokens, user: user!, isNew };
+    const org = userWithOrg?.member?.organization;
+    return {
+      ...tokens,
+      hasOrganization: !!org,
+      ...(org && {
+        organization: {
+          id: org.id,
+          name: org.name,
+          onboardingProgress: org.onboardingProgress
+            ? {
+                id: org.onboardingProgress.id,
+                percentage: org.onboardingProgress.percentage,
+                isCategorySelected: org.onboardingProgress.isCategorySelected,
+                isSchemaConfigured: org.onboardingProgress.isSchemaConfigured,
+                isFirstProductAdded: org.onboardingProgress.isFirstProductAdded,
+                isBotConnected: org.onboardingProgress.isBotConnected,
+                nextStep: org.onboardingProgress.nextStep,
+                status: org.onboardingProgress.status,
+              }
+            : null,
+        },
+      }),
+    };
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
@@ -194,7 +241,12 @@ export class AuthService {
     });
   }
 
-  async getMe(userId: number): Promise<{ id: number; email: string; firstName: string | null; lastName: string | null }> {
+  async getMe(userId: number): Promise<{
+    id: number;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, firstName: true, lastName: true, email: true },
