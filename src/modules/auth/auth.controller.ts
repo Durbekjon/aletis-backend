@@ -185,7 +185,6 @@ export class AuthController {
     if (!frontendRedirectBase) {
       throw new Error('Frontend redirect URL is not defined');
     }
-
     const url = new URL(frontendRedirectBase);
     url.searchParams.set('bearer', result.accessToken);
     url.searchParams.set('refresh', result.refreshToken);

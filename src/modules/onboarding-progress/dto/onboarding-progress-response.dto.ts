@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OnboardingStep, OnboardingStatus } from '@prisma/client';
+import { IsEnum, IsNotEmpty } from 'class-validator';
 
 export class CurrentStepResponseDto {
   @ApiProperty({ 
@@ -85,6 +86,8 @@ export class UpdateNextStepDto {
     enum: OnboardingStep,
     example: OnboardingStep.CONFIGURE_SCHEMA
   })
+  @IsEnum(OnboardingStep)
+  @IsNotEmpty()
   step: OnboardingStep;
 }
 

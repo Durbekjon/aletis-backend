@@ -57,6 +57,13 @@ export class OnboardingProgressService {
     });
     if (!organization)
       throw new NotFoundException('User is not a member of any organization');
+    const stepKey = this.getStepKey(step);
+    if (stepKey) {
+      await this.prisma.onboardingProgress.update({
+        where: { organizationId: organization.organizationId },
+        data: { [stepKey]: true },
+      });
+    }
     const percentage =
       step === OnboardingStep.SELECT_CATEGORY
         ? 40
@@ -73,5 +80,20 @@ export class OnboardingProgressService {
       where: { organizationId: organization.organizationId },
       data: { nextStep: step, percentage, status },
     });
+  }
+
+  private getStepKey(step: OnboardingStep): string | null {
+    switch (step) {
+      case OnboardingStep.SELECT_CATEGORY:
+        return 'isCategorySelected';
+      case OnboardingStep.CONFIGURE_SCHEMA:
+        return 'isSchemaConfigured';
+      case OnboardingStep.ADD_FIRST_PRODUCT:
+        return 'isFirstProductAdded';
+      case OnboardingStep.CONNECT_BOT:
+        return 'isBotConnected';
+      default:
+        return null;
+    }
   }
 }
