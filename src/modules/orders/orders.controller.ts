@@ -24,6 +24,7 @@ import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
 import { PaginationDto } from '@/shared/dto';
+import { OrderPaginationDto } from './dto/order-pagination.dto';
 import { OrdersService } from './orders.service';
 import {
   UpdateOrderStatusDto,
@@ -41,7 +42,8 @@ export class OrdersController {
   @Get()
   @ApiOperation({
     summary: 'Get all orders',
-    description: 'Retrieve paginated list of orders with search functionality',
+    description:
+      'Retrieve paginated list of orders with search functionality and filtering by status and payment status',
   })
   @ApiQuery({
     name: 'page',
@@ -70,6 +72,28 @@ export class OrdersController {
     example: 'desc',
     description: 'Sort order by creation date',
   })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: [
+      'NEW',
+      'PENDING',
+      'CONFIRMED',
+      'SHIPPED',
+      'DELIVERED',
+      'CANCELLED',
+      'REFUNDED',
+    ],
+    description: 'Filter by order status',
+    example: 'PENDING',
+  })
+  @ApiQuery({
+    name: 'paymentStatus',
+    required: false,
+    enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'],
+    description: 'Filter by payment status',
+    example: 'PAID',
+  })
   @ApiResponse({
     status: 200,
     description: 'Orders retrieved successfully',
@@ -77,7 +101,7 @@ export class OrdersController {
   })
   async findAll(
     @CurrentUser() user: JwtPayload,
-    @Query() pagination: PaginationDto,
+    @Query() pagination: OrderPaginationDto,
   ): Promise<OrderPaginatedResponseDto> {
     return this.ordersService.getOrders(
       +user.userId,

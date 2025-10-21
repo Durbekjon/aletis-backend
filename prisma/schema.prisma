@@ -313,12 +313,16 @@ model Order {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   status         OrderStatus  @default(NEW)
+  paymentStatus  PaymentStatus @default(PENDING)
   customerId     Int?
   customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   details        Json?
   organizationId Int
   organization   Organization @relation(fields: [organizationId], references: [id])
   totalPrice     Float        @default(0)
+  trackingNumber String?
+  discountAmount Float?
+  discountPercentage Float?
   products       Product[]    @relation("ordered_products")
   orderItems     OrderItem[]
 
@@ -326,6 +330,13 @@ model Order {
   @@index([customerId], name: "idx_orders_customer_id")
   @@index([status], name: "idx_orders_status")
   @@map("orders")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
 }
 
 model OrderItem {
@@ -425,4 +436,5 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CANCELLED
+  REFUNDED
 }

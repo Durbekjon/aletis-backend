@@ -7,8 +7,13 @@ import {
 } from '@nestjs/common';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '@core/prisma/prisma.service';
-import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
-import { CreateOrderDto, OrderResponseDto, UpdateOrderStatusDto } from './dto';
+import { PaginatedResponseDto } from '@/shared/dto';
+import {
+  CreateOrderDto,
+  OrderResponseDto,
+  UpdateOrderStatusDto,
+  OrderPaginationDto,
+} from './dto';
 
 @Injectable()
 export class OrdersService {
@@ -150,7 +155,7 @@ export class OrdersService {
    */
   async getOrders(
     userId: number,
-    pagination: PaginationDto,
+    pagination: OrderPaginationDto,
   ): Promise<PaginatedResponseDto<OrderResponseDto>> {
     const organizationId = await this.getUserOrganizationId(userId);
 
@@ -183,9 +188,17 @@ export class OrdersService {
         }
       : {};
 
+    // Build status and payment status filters
+    const statusFilter = pagination.status ? { status: pagination.status } : {};
+    const paymentStatusFilter = pagination.paymentStatus
+      ? { paymentStatus: pagination.paymentStatus }
+      : {};
+
     const whereClause = {
       organizationId,
       ...searchFilter,
+      ...statusFilter,
+      ...paymentStatusFilter,
     };
 
     const [items, total] = await this.prisma.$transaction([
@@ -797,9 +810,11 @@ export class OrdersService {
   private mapOrderToResponse(order: any): OrderResponseDto {
     return {
       id: order.id,
+      orderNumber: `ORD-${order.id.toString().padStart(3, '0')}`,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       status: order.status,
+      paymentStatus: order.paymentStatus,
       customer: order.customer
         ? {
             id: order.customer.id,
@@ -812,8 +827,11 @@ export class OrdersService {
       organizationId: order.organizationId,
       quantity: order.quantity,
       totalPrice: order.totalPrice,
+      discountAmount: order.discountAmount,
+      discountPercentage: order.discountPercentage,
       products: order.products || [],
       orderItems: order.orderItems || [],
+      trackingNumber: order.trackingNumber,
     };
   }
 }
