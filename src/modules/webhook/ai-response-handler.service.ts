@@ -55,6 +55,14 @@ export class AiResponseHandlerService {
             originalUserMessage,
           );
 
+        case 'ASK_FOR_INFO':
+          return await this.handleAskForInfoIntent(
+            aiResponse,
+            customer,
+            organizationId,
+            originalUserMessage,
+          );
+
         default:
           return {
             text: aiResponse.text,
@@ -176,8 +184,23 @@ export class AiResponseHandlerService {
         error.stack,
       );
 
+      // Detect language and provide appropriate error message
+      const detectedLanguage = await this.geminiService.detectLanguage(
+        originalUserMessage || '',
+      );
+      let errorMessage =
+        "I'm sorry, I couldn't process your order right now. Please try again or contact our support team.";
+
+      if (detectedLanguage === 'uz') {
+        errorMessage =
+          "Kechirasiz, buyurtmangizni qayta ishlashda muammo bo'ldi. Iltimos, qayta urinib ko'ring yoki qo'llab-quvvatlash jamoasi bilan bog'laning.";
+      } else if (detectedLanguage === 'ru') {
+        errorMessage =
+          'Извините, не удалось обработать ваш заказ. Попробуйте еще раз или обратитесь в службу поддержки.';
+      }
+
       return {
-        text: "I'm sorry, I couldn't process your order right now. Please try again or contact our support team.",
+        text: errorMessage,
       };
     }
   }
@@ -216,8 +239,23 @@ export class AiResponseHandlerService {
         error.stack,
       );
 
+      // Detect language and provide appropriate error message
+      const detectedLanguage = await this.geminiService.detectLanguage(
+        originalUserMessage || '',
+      );
+      let errorMessage =
+        "I'm having trouble retrieving your orders right now. Please try again later.";
+
+      if (detectedLanguage === 'uz') {
+        errorMessage =
+          "Buyurtmalaringizni olishda muammo bo'ldi. Iltimos, keyinroq urinib ko'ring.";
+      } else if (detectedLanguage === 'ru') {
+        errorMessage =
+          'У меня проблемы с получением ваших заказов. Попробуйте позже.';
+      }
+
       return {
-        text: "I'm having trouble retrieving your orders right now. Please try again later.",
+        text: errorMessage,
       };
     }
   }
@@ -318,5 +356,24 @@ export class AiResponseHandlerService {
       default:
         return '📋';
     }
+  }
+
+  private async handleAskForInfoIntent(
+    aiResponse: AiResponse,
+    customer: Customer,
+    organizationId: number,
+    originalUserMessage?: string,
+  ): Promise<ProcessedAiResponse> {
+    this.logger.log(`ASK_FOR_INFO intent received for customer ${customer.id}`);
+    this.logger.log(
+      `Missing info: ${JSON.stringify(aiResponse.missingInfo || [])}`,
+    );
+
+    // Return the AI response text as-is, since it should contain the request for missing information
+    return {
+      text:
+        aiResponse.text ||
+        'I need some additional information to process your order.',
+    };
   }
 }

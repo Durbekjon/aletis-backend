@@ -323,6 +323,7 @@ model Order {
   trackingNumber String?
   discountAmount Float?
   discountPercentage Float?
+  notes            String?
   products       Product[]    @relation("ordered_products")
   orderItems     OrderItem[]
 

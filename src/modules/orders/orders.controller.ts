@@ -27,9 +27,9 @@ import { PaginationDto } from '@/shared/dto';
 import { OrderPaginationDto } from './dto/order-pagination.dto';
 import { OrdersService } from './orders.service';
 import {
-  UpdateOrderStatusDto,
   OrderResponseDto,
   OrderPaginatedResponseDto,
+  UpdateOrderDto,
 } from './dto';
 
 @ApiTags('Orders')
@@ -140,9 +140,9 @@ export class OrdersController {
     return this.ordersService.getOrderById(+user.userId, id);
   }
 
-  @Patch(':id/status')
+  @Patch(':id')
   @ApiOperation({
-    summary: 'Update order status',
+    summary: 'Update order',
     description: 'Update the status of an existing order',
   })
   @ApiParam({
@@ -151,10 +151,10 @@ export class OrdersController {
     example: 1,
     description: 'Order ID',
   })
-  @ApiBody({ type: UpdateOrderStatusDto })
+  @ApiBody({ type: UpdateOrderDto })
   @ApiResponse({
     status: 200,
-    description: 'Order status updated successfully',
+    description: 'Order updated successfully',
     type: OrderResponseDto,
   })
   @ApiResponse({
@@ -167,14 +167,14 @@ export class OrdersController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - invalid status value',
+    description: 'Bad request - invalid order value',
   })
-  async updateStatus(
+  async updateOrderById(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateOrderStatusDto,
+    @Body() dto: UpdateOrderDto,
   ): Promise<OrderResponseDto> {
-    return this.ordersService.updateOrderStatus(+user.userId, id, dto);
+    return this.ordersService.updateOrder(+user.userId, id, dto);
   }
 
   @Delete(':id')
