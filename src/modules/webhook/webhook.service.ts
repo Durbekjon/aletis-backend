@@ -373,12 +373,28 @@ export class WebhookService {
       bot.organizationId,
     );
 
+    this.logger.log(`🤖 AI PROCESSING - Customer message: "${message}"`);
+    this.logger.log(`📦 PRODUCT CONTEXT PROVIDED TO AI:`);
+    this.logger.log(productContext);
+    this.logger.log(
+      `📊 Total products available: ${productContext.split('Product ID:').length - 1}`,
+    );
+
     const aiResponse = await this.geminiService.generateResponse(
       message,
       history,
       productContext,
       userOrders,
     );
+
+    this.logger.log(
+      `🤖 AI RESPONSE GENERATED: ${aiResponse.text?.substring(0, 100)}...`,
+    );
+    if (aiResponse.orderData) {
+      this.logger.log(
+        `📋 AI ORDER DATA: ${JSON.stringify(aiResponse.orderData, null, 2)}`,
+      );
+    }
 
     return aiResponse;
   }
