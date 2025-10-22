@@ -20,10 +20,7 @@ export class PostsController {
   @Post()
   @ApiOperation({ summary: 'Create a post' })
   @ApiResponse({ status: 201, description: 'Post created' })
-  async create(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: CreatePostDto,
-  ) {
+  async create(@CurrentUser() user: JwtPayload, @Body() dto: CreatePostDto) {
     return this.postsService.createPost(+user.userId, dto);
   }
 
@@ -47,27 +44,40 @@ export class PostsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a post' })
   @ApiParam({ name: 'id', type: Number })
-  async remove(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-  ) {
+  async remove(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     await this.postsService.deletePost(+user.userId, +id);
   }
 
-  @Get('channel/:channelId')
-  @ApiOperation({ summary: 'Get paginated posts by channel id' })
-  @ApiParam({ name: 'channelId', type: Number })
+  @Get(':id')
+  @ApiOperation({ summary: 'Get post by id' })
+  @ApiParam({ name: 'id', type: Number })
+  async getById(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.postsService.getPostById(+user.userId, +id);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get paginated posts' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   @ApiQuery({ name: 'search', required: false, type: String })
-  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], example: 'desc' })
+  @ApiQuery({
+    name: 'order',
+    required: false,
+    enum: ['asc', 'desc'],
+    example: 'desc',
+  })
+  @ApiQuery({ name: 'channelId', required: false, type: Number, example: 1 })
   @ApiResponse({ status: 200, type: PostPaginatedResponseDto })
   async getByChannel(
     @CurrentUser() user: JwtPayload,
-    @Param('channelId') channelId: string,
     @Query() pagination: PaginationDto,
+    @Query('channelId') channelId?: string,
   ): Promise<PostPaginatedResponseDto> {
-    return this.postsService.getPostsByChannel(+user.userId, +channelId, pagination) as unknown as PostPaginatedResponseDto;
+    return this.postsService.getPosts(
+      +user.userId,
+      pagination,
+      channelId ? +channelId : undefined,
+    ) as unknown as PostPaginatedResponseDto;
   }
 
   @Post(':id/schedule')
