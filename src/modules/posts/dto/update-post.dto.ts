@@ -8,11 +8,6 @@ export class UpdatePostDto {
   @IsString()
   content?: string;
 
-  @ApiPropertyOptional({ description: 'Move to another channel ID' })
-  @IsOptional()
-  @IsInt()
-  channelId?: number;
-
   @ApiPropertyOptional({ description: 'Update status', enum: PostStatus })
   @IsOptional()
   @IsEnum(PostStatus)

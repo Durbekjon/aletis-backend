@@ -89,16 +89,6 @@ export class PostsService {
     )
       throw new ForbiddenException('Post out of organization');
 
-    let channelId = post.channelId;
-    if (dto.channelId && dto.channelId !== post.channelId) {
-      await this.ensureOwnershipByIds(
-        organizationId,
-        post.productId,
-        dto.channelId,
-      );
-      channelId = dto.channelId;
-    }
-
     const scheduledAt = dto.scheduledAt
       ? new Date(dto.scheduledAt)
       : post.scheduledAt;
@@ -107,7 +97,6 @@ export class PostsService {
       where: { id: postId },
       data: {
         content: dto.content ?? post.content,
-        channelId,
         status: dto.status ?? post.status,
         scheduledAt,
       },
@@ -144,36 +133,65 @@ export class PostsService {
     return { success: true };
   }
 
-  async getPostsByChannel(
+  async getPosts(
     userId: number,
-    channelId: number,
     pagination: PaginationDto,
+    channelId?: number,
   ) {
     const organizationId = await this.getUserOrganizationId(userId);
-    const channel = await this.prisma.channel.findUnique({
-      where: { id: channelId },
-    });
-    if (!channel) throw new NotFoundException('Channel not found');
-    if (channel.organizationId !== organizationId)
-      throw new ForbiddenException('Channel out of organization');
+    let whereClause: Prisma.PostWhereInput = {};
+    if (channelId) {
+      const channel = await this.prisma.channel.findUnique({
+        where: { id: channelId },
+      });
+      if (!channel) throw new NotFoundException('Channel not found');
+      if (channel.organizationId !== organizationId)
+        throw new ForbiddenException('Channel out of organization');
+      whereClause.channelId = channelId;
+    }
 
-    const searchFilter = pagination.search
-      ? {
-          content: {
-            contains: pagination.search,
-            mode: Prisma.QueryMode.insensitive,
-          },
-        }
-      : {};
+    if (pagination.search) {
+      whereClause = {
+        ...whereClause,
+        content: {
+          contains: pagination.search,
+          mode: Prisma.QueryMode.insensitive,
+        },
+      };
+    }
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.post.findMany({
-        where: { channelId, ...searchFilter },
+        where: whereClause,
+        include: {
+          channel: {
+            select: {
+              id: true,
+              title: true,
+              username: true,
+            },
+          },
+          product: {
+            select: {
+              id: true,
+              name: true,
+              currency: true,
+              price: true,
+              images: {
+                select: {
+                  id: true,
+                  key: true,
+                  originalName: true,
+                },
+              },
+            },
+          },
+        },
         skip: pagination.skip,
         take: pagination.take,
         orderBy: { createdAt: pagination.order },
       }),
-      this.prisma.post.count({ where: { channelId, ...searchFilter } }),
+      this.prisma.post.count({ where: whereClause }),
     ]);
 
     return new PaginatedResponseDto(
@@ -182,6 +200,46 @@ export class PostsService {
       pagination.page ?? 1,
       pagination.limit ?? 20,
     );
+  }
+
+  async getPostById(userId: number, postId: number) {
+    const organizationId = await this.getUserOrganizationId(userId);
+    const post = await this.prisma.post.findUnique({
+      where: { id: postId },
+      include: {
+        channel: {
+          select: {
+            id: true,
+            title: true,
+            username: true,
+            organizationId: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            currency: true,
+            price: true,
+            organizationId: true,
+            images: { select: { id: true, key: true, originalName: true } },
+          },
+        },
+      },
+    });
+    if (!post) throw new NotFoundException('Post not found');
+    if (
+      !post.channel ||
+      !post.product ||
+      post.channel.organizationId !== organizationId ||
+      post.product.organizationId !== organizationId
+    )
+      throw new ForbiddenException('Post out of organization');
+
+    // Strip organizationId from response objects
+    const { organizationId: _cOrg, ...channel } = post.channel as any;
+    const { organizationId: _pOrg, ...product } = post.product as any;
+    return { ...post, channel, product };
   }
 
   async schedulePost(userId: number, postId: number, scheduledAtISO: string) {
