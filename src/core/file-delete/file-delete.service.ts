@@ -30,9 +30,7 @@ export class FileDeleteService {
   async deleteFilesByKeys(keys: string[]): Promise<void> {
     if (!keys?.length) return;
     // Concurrently delete files (with Promise.all)
-    await Promise.all(
-      keys.map((key) => this.deleteFileByKey(key))
-    );
+    await Promise.all(keys.map((key) => this.deleteFileByKey(key)));
   }
 
   /**

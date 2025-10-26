@@ -8,7 +8,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 @ApiTags('Dashboard')
 @ApiBearerAuth('bearer')
 @UseGuards(JwtAuthGuard)
-@Controller({path: 'dashboard', version: '1'})
+@Controller({ path: 'dashboard', version: '1' })
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 

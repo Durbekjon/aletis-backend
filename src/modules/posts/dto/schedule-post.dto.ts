@@ -6,5 +6,3 @@ export class SchedulePostDto {
   @IsISO8601()
   scheduledAt: string;
 }
-
-

@@ -7,6 +7,6 @@ import { SchemaService } from './schema.service';
   imports: [PrismaModule],
   controllers: [SchemaController],
   providers: [SchemaService],
-  exports: [SchemaService]
+  exports: [SchemaService],
 })
 export class SchemaModule {}

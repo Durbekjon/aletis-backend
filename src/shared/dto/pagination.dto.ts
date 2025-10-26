@@ -1,4 +1,12 @@
-import { IsOptional, IsNumber, IsString, IsIn, Min, Max, IsEnum } from 'class-validator';
+import {
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsIn,
+  Min,
+  Max,
+  IsEnum,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -50,11 +58,11 @@ export class PaginationDto {
 
   @ApiPropertyOptional({
     description: 'Status filter',
-    enum: ['ACTIVE', 'ARCHIVED','DRAFT'],
+    enum: ['ACTIVE', 'ARCHIVED', 'DRAFT'],
     example: 'ACTIVE',
   })
   @IsOptional()
-  @IsEnum(['ACTIVE', 'ARCHIVED','DRAFT'], { message: 'Invalid status' })
+  @IsEnum(['ACTIVE', 'ARCHIVED', 'DRAFT'], { message: 'Invalid status' })
   status?: 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
   /**
    * Get the skip value for Prisma pagination

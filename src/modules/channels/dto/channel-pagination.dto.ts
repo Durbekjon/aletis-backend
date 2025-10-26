@@ -3,10 +3,16 @@ import { PaginatedResponseDto } from '@/shared/dto';
 import { ChannelResponseDto } from './channel-response.dto';
 
 export class ChannelPaginatedResponseDto extends PaginatedResponseDto<ChannelResponseDto> {
-  @ApiProperty({ description: 'Array of channels for the current page', type: [ChannelResponseDto] })
+  @ApiProperty({
+    description: 'Array of channels for the current page',
+    type: [ChannelResponseDto],
+  })
   declare items: ChannelResponseDto[];
 
-  @ApiProperty({ description: 'Total number of channels matching the filter', example: 150 })
+  @ApiProperty({
+    description: 'Total number of channels matching the filter',
+    example: 150,
+  })
   declare total: number;
 
   @ApiProperty({ description: 'Current page number (1-based)', example: 1 })
@@ -21,8 +27,9 @@ export class ChannelPaginatedResponseDto extends PaginatedResponseDto<ChannelRes
   @ApiProperty({ description: 'Whether there is a next page', example: true })
   declare hasNext: boolean;
 
-  @ApiProperty({ description: 'Whether there is a previous page', example: false })
+  @ApiProperty({
+    description: 'Whether there is a previous page',
+    example: false,
+  })
   declare hasPrevious: boolean;
 }
-
-

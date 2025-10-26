@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '@core/prisma/prisma.service';
 import {
   Bot,
@@ -132,7 +137,7 @@ export class BotsService {
       dto.token,
     );
     const encryptedToken = this.encryption.encrypt(dto.token);
-    let botsCount = await this.prisma.bot.count({
+    const botsCount = await this.prisma.bot.count({
       where: { organizationId: organization.id, isDefault: true },
     });
     let isDefault = false;

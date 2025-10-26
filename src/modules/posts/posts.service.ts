@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { Prisma, PostStatus } from '@prisma/client';
 import { PrismaService } from '@core/prisma/prisma.service';
 import { EncryptionService } from '@core/encryption/encryption.service';
@@ -440,5 +446,3 @@ export class PostsService {
     return post;
   }
 }
-
-

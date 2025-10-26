@@ -17,7 +17,11 @@ export class PostResponseDto {
   @ApiProperty({ enum: PostStatus })
   status: PostStatus;
 
-  @ApiPropertyOptional({ type: 'object', description: 'Telegram metadata', additionalProperties: true })
+  @ApiPropertyOptional({
+    type: 'object',
+    description: 'Telegram metadata',
+    additionalProperties: true,
+  })
   metaData?: Record<string, any> | null;
 
   @ApiPropertyOptional()
@@ -38,5 +42,3 @@ export class PostResponseDto {
   @ApiPropertyOptional()
   failLog?: string | null;
 }
-
-

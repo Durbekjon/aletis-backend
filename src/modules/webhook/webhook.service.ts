@@ -157,12 +157,12 @@ export class WebhookService {
                       .replace(/\[INTENT:FETCH_ORDERS\][\s\S]*$/g, '')
                       .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*$/g, '')
                       .trim();
-                    return cleanedText.length > 1024 
-                      ? cleanedText.slice(0, 1010) + '...' 
+                    return cleanedText.length > 1024
+                      ? cleanedText.slice(0, 1010) + '...'
                       : cleanedText;
                   })(),
-                  parse_mode: 'HTML'
-                })
+                  parse_mode: 'HTML',
+                }),
               };
             });
 

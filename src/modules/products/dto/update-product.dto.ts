@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsNumber, IsArray, ValidateNested, IsInt, Min, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  Min,
+  IsEnum,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Currency, ProductStatus } from '@prisma/client';
@@ -20,7 +29,7 @@ export class UpdateFieldValueDto {
       { type: 'number' },
       { type: 'boolean' },
       { type: 'string', format: 'date-time' },
-      { type: 'object' }
+      { type: 'object' },
     ],
     example: 'Updated text value',
   })
@@ -61,7 +70,7 @@ export class UpdateProductDto {
   @IsNumber()
   @Min(1)
   quantity?: number = 1;
-  
+
   @ApiPropertyOptional({
     description: 'The status of the product',
     example: ProductStatus.ACTIVE,
@@ -94,7 +103,7 @@ export class UpdateProductDto {
     type: [UpdateFieldValueDto],
     example: [
       { fieldId: 1, value: 'Intel i9' },
-      { fieldId: 2, value: 32 }
+      { fieldId: 2, value: 32 },
     ],
   })
   @IsOptional()

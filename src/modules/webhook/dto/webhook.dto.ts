@@ -1,7 +1,6 @@
-import { TelegramMessageDto } from "@modules/telegram/dto/telegram.dto";
-import { Type } from "class-transformer";
-import { IsNumber, IsOptional, ValidateNested } from "class-validator";
-
+import { TelegramMessageDto } from '@modules/telegram/dto/telegram.dto';
+import { Type } from 'class-transformer';
+import { IsNumber, IsOptional, ValidateNested } from 'class-validator';
 
 export class WebhookDto {
   @IsNumber()

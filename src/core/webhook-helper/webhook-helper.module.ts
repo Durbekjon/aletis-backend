@@ -3,6 +3,6 @@ import { WebhookHelperService } from './webhook-helper.service';
 
 @Module({
   providers: [WebhookHelperService, Logger],
-  exports:[WebhookHelperService]
+  exports: [WebhookHelperService],
 })
 export class WebhookHelperModule {}

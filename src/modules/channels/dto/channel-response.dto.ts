@@ -26,5 +26,3 @@ export class ChannelResponseDto {
   @ApiProperty({ description: 'Update timestamp' })
   updatedAt: Date;
 }
-
-

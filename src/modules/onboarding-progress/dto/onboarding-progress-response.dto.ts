@@ -3,16 +3,16 @@ import { OnboardingStep, OnboardingStatus } from '@prisma/client';
 import { IsEnum, IsNotEmpty } from 'class-validator';
 
 export class CurrentStepResponseDto {
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Current onboarding step',
     enum: OnboardingStep,
-    example: OnboardingStep.SELECT_CATEGORY
+    example: OnboardingStep.SELECT_CATEGORY,
   })
   step: OnboardingStep;
 }
 
 export class OnboardingStepsResponseDto {
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'List of all onboarding steps',
     type: [String],
     enum: OnboardingStep,
@@ -20,8 +20,8 @@ export class OnboardingStepsResponseDto {
       OnboardingStep.SELECT_CATEGORY,
       OnboardingStep.CONFIGURE_SCHEMA,
       OnboardingStep.ADD_FIRST_PRODUCT,
-      OnboardingStep.CONNECT_BOT
-    ]
+      OnboardingStep.CONNECT_BOT,
+    ],
   })
   steps: OnboardingStep[];
 }
@@ -33,61 +33,60 @@ export class OnboardingProgressResponseDto {
   @ApiProperty({ description: 'Organization ID', example: 1 })
   organizationId: number;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Completion percentage',
     example: 40,
     minimum: 0,
-    maximum: 100
+    maximum: 100,
   })
   percentage: number;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Whether category has been selected',
-    example: true
+    example: true,
   })
   isCategorySelected: boolean;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Whether schema has been configured',
-    example: false
+    example: false,
   })
   isSchemaConfigured: boolean;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Whether first product has been added',
-    example: false
+    example: false,
   })
   isFirstProductAdded: boolean;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Whether bot has been connected',
-    example: false
+    example: false,
   })
   isBotConnected: boolean;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Next step to complete',
     enum: OnboardingStep,
-    example: OnboardingStep.CONFIGURE_SCHEMA
+    example: OnboardingStep.CONFIGURE_SCHEMA,
   })
   nextStep: OnboardingStep;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Overall onboarding status',
     enum: OnboardingStatus,
-    example: OnboardingStatus.INCOMPLETE
+    example: OnboardingStatus.INCOMPLETE,
   })
   status: OnboardingStatus;
 }
 
 export class UpdateNextStepDto {
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'The step to move to',
     enum: OnboardingStep,
-    example: OnboardingStep.CONFIGURE_SCHEMA
+    example: OnboardingStep.CONFIGURE_SCHEMA,
   })
   @IsEnum(OnboardingStep)
   @IsNotEmpty()
   step: OnboardingStep;
 }
-

@@ -1,7 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
-import { MemberRole, OnboardingProgress, OnboardingStatus, OnboardingStep } from '@prisma/client';
-import { CurrentStepResponseDto, OnboardingProgressResponseDto, OnboardingStepsResponseDto } from './dto';
+import {
+  MemberRole,
+  OnboardingProgress,
+  OnboardingStatus,
+  OnboardingStep,
+} from '@prisma/client';
+import {
+  CurrentStepResponseDto,
+  OnboardingProgressResponseDto,
+  OnboardingStepsResponseDto,
+} from './dto';
 
 @Injectable()
 export class OnboardingProgressService {

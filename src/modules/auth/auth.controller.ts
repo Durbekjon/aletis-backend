@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
   Post,
   Req,
   Res,
@@ -18,6 +19,8 @@ import {
   RefreshTokenDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  UpdateProfileDto,
+  UpdatePasswordDto,
 } from '@auth/dto';
 import {
   ApiBearerAuth,
@@ -138,6 +141,46 @@ export class AuthController {
   @ApiOkResponse({ description: 'Password reset successful' })
   async resetPassword(@Body() body: ResetPasswordDto): Promise<void> {
     await this.authService.resetPassword(body.token, body.newPassword);
+  }
+
+  @Patch('update-profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update user profile' })
+  @ApiBody({ type: UpdateProfileDto })
+  @ApiOkResponse({
+    description: 'Profile updated successfully',
+    schema: {
+      properties: {
+        id: { type: 'number' },
+        email: { type: 'string' },
+        firstName: { type: 'string', nullable: true },
+        lastName: { type: 'string', nullable: true },
+      },
+    },
+  })
+  async updateProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(Number(user.userId), body);
+  }
+
+  @Patch('update-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Update user password' })
+  @ApiBody({ type: UpdatePasswordDto })
+  @ApiOkResponse({ description: 'Password updated successfully' })
+  async updatePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: UpdatePasswordDto,
+  ): Promise<void> {
+    await this.authService.updatePassword(
+      Number(user.userId),
+      body.oldPassword,
+      body.newPassword,
+    );
   }
 
   @Get('google')

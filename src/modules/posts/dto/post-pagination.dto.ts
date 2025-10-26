@@ -24,5 +24,3 @@ export class PostPaginatedResponseDto extends PaginatedResponseDto<PostResponseD
   @ApiProperty({ example: false })
   declare hasPrevious: boolean;
 }
-
-

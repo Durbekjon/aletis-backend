@@ -9,7 +9,10 @@ export class CustomerPaginatedResponseDto extends PaginatedResponseDto<CustomerR
   })
   declare items: CustomerResponseDto[];
 
-  @ApiProperty({ description: 'Total number of customers matching the filter', example: 150 })
+  @ApiProperty({
+    description: 'Total number of customers matching the filter',
+    example: 150,
+  })
   declare total: number;
 
   @ApiProperty({ description: 'Current page number (1-based)', example: 1 })
@@ -24,8 +27,9 @@ export class CustomerPaginatedResponseDto extends PaginatedResponseDto<CustomerR
   @ApiProperty({ description: 'Whether there is a next page', example: true })
   declare hasNext: boolean;
 
-  @ApiProperty({ description: 'Whether there is a previous page', example: false })
+  @ApiProperty({
+    description: 'Whether there is a previous page',
+    example: false,
+  })
   declare hasPrevious: boolean;
 }
-
-

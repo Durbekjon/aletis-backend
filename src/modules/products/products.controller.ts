@@ -68,7 +68,10 @@ export class ProductsController {
     @CurrentUser() user: JwtPayload,
     @Body() createProductDto: CreateProductDto,
   ): Promise<ProductResponseDto> {
-    return this.productsService.createProduct(Number(user.userId), createProductDto);
+    return this.productsService.createProduct(
+      Number(user.userId),
+      createProductDto,
+    );
   }
 
   @Get()
@@ -105,7 +108,7 @@ export class ProductsController {
     name: 'status',
     description: 'Filter by product status',
     required: false,
-    enum: ['ACTIVE', 'ARCHIVED','DRAFT'],
+    enum: ['ACTIVE', 'ARCHIVED', 'DRAFT'],
     example: 'ACTIVE',
   })
   @ApiResponse({
@@ -198,7 +201,11 @@ export class ProductsController {
     @CurrentUser() user: JwtPayload,
     @Body() updateProductDto: UpdateProductDto,
   ): Promise<ProductResponseDto> {
-    return this.productsService.updateProduct(productId, Number(user.userId), updateProductDto);
+    return this.productsService.updateProduct(
+      productId,
+      Number(user.userId),
+      updateProductDto,
+    );
   }
 
   @Delete(':id')
@@ -250,7 +257,8 @@ export class ProductsController {
   })
   @ApiResponse({
     status: 404,
-    description: 'One or more products not found or do not belong to your organization',
+    description:
+      'One or more products not found or do not belong to your organization',
   })
   @ApiResponse({
     status: 500,
@@ -260,6 +268,9 @@ export class ProductsController {
     @CurrentUser() user: JwtPayload,
     @Body() bulkDeleteDto: BulkDeleteProductsDto,
   ): Promise<void> {
-    return this.productsService.bulkDeleteProducts(Number(user.userId), bulkDeleteDto.ids);
+    return this.productsService.bulkDeleteProducts(
+      Number(user.userId),
+      bulkDeleteDto.ids,
+    );
   }
 }

@@ -45,5 +45,3 @@ export class BotPaginatedResponseDto extends PaginatedResponseDto<BotResponseDto
   })
   declare hasPrevious: boolean;
 }
-
-

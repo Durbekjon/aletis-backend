@@ -6,4 +6,3 @@ import { MessageBufferService } from './message-buffer.service';
   exports: [MessageBufferService],
 })
 export class MessageBufferModule {}
-

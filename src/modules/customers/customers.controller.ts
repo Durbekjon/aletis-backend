@@ -2,7 +2,13 @@ import { Controller, Get, Param, Query, ParseIntPipe } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '@guards/jwt-auth.guard';
 import { UseGuards } from '@nestjs/common';
 import { PaginationDto } from '@/shared/dto';

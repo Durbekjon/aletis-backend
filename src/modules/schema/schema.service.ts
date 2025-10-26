@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
 import {
   CreateSchemaDto,
@@ -23,7 +28,7 @@ export class SchemaService {
 
     // Check if organization already has a schema
     const existingSchema = await this.prisma.productSchema.findUnique({
-      where: { organizationId: organization.organizationId }
+      where: { organizationId: organization.organizationId },
     });
 
     if (existingSchema) {
@@ -35,15 +40,15 @@ export class SchemaService {
         ...createSchemaDto,
         organization: {
           connect: {
-            id:organization.organizationId
-          }
-        }
+            id: organization.organizationId,
+          },
+        },
       },
       include: {
         fields: {
-          orderBy: { order: 'asc' }
-        }
-      }
+          orderBy: { order: 'asc' },
+        },
+      },
     });
   }
 
@@ -61,19 +66,25 @@ export class SchemaService {
       where: { organizationId: organization.organizationId },
       include: {
         fields: {
-          orderBy: { order: 'asc' }
-        }
-      }
+          orderBy: { order: 'asc' },
+        },
+      },
     });
 
     if (!schema) {
-      throw new NotFoundException('Product schema not found for this organization');
+      throw new NotFoundException(
+        'Product schema not found for this organization',
+      );
     }
 
     return schema;
   }
 
-  async updateSchema(schemaId: number, userId: number, updateSchemaDto: UpdateSchemaDto) {
+  async updateSchema(
+    schemaId: number,
+    userId: number,
+    updateSchemaDto: UpdateSchemaDto,
+  ) {
     const organization = await this.prisma.member.findUnique({
       where: { userId },
       select: { organizationId: true },
@@ -85,11 +96,13 @@ export class SchemaService {
 
     // Verify ownership
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId: organization.organizationId }
+      where: { id: schemaId, organizationId: organization.organizationId },
     });
 
     if (!schema) {
-      throw new NotFoundException('Schema not found or does not belong to organization');
+      throw new NotFoundException(
+        'Schema not found or does not belong to organization',
+      );
     }
 
     return this.prisma.productSchema.update({
@@ -97,9 +110,9 @@ export class SchemaService {
       data: updateSchemaDto,
       include: {
         fields: {
-          orderBy: { order: 'asc' }
-        }
-      }
+          orderBy: { order: 'asc' },
+        },
+      },
     });
   }
 
@@ -117,27 +130,35 @@ export class SchemaService {
     const schema = await this.prisma.productSchema.findFirst({
       where: { id: schemaId, organizationId: organization.organizationId },
       include: {
-        products: true
-      }
+        products: true,
+      },
     });
 
     if (!schema) {
-      throw new NotFoundException('Schema not found or does not belong to organization');
+      throw new NotFoundException(
+        'Schema not found or does not belong to organization',
+      );
     }
 
     // Check if there are products using this schema
     if (schema.products.length > 0) {
-      throw new ConflictException('Cannot delete schema that has products. Delete products first or use cascade delete.');
+      throw new ConflictException(
+        'Cannot delete schema that has products. Delete products first or use cascade delete.',
+      );
     }
 
     return this.prisma.productSchema.delete({
-      where: { id: schemaId }
+      where: { id: schemaId },
     });
   }
 
   // Field Operations
 
-  async addField(schemaId: number, userId: number, createFieldDto: CreateFieldDto) {
+  async addField(
+    schemaId: number,
+    userId: number,
+    createFieldDto: CreateFieldDto,
+  ) {
     const organization = await this.prisma.member.findUnique({
       where: { userId },
       select: { organizationId: true },
@@ -149,17 +170,19 @@ export class SchemaService {
 
     // Verify schema ownership
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId: organization.organizationId }
+      where: { id: schemaId, organizationId: organization.organizationId },
     });
 
     if (!schema) {
-      throw new NotFoundException('Schema not found or does not belong to organization');
+      throw new NotFoundException(
+        'Schema not found or does not belong to organization',
+      );
     }
 
     // Get the next order number
     const lastField = await this.prisma.field.findFirst({
       where: { schemaId },
-      orderBy: { order: 'desc' }
+      orderBy: { order: 'desc' },
     });
 
     const nextOrder = lastField ? lastField.order + 1 : 0;
@@ -168,12 +191,17 @@ export class SchemaService {
       data: {
         ...createFieldDto,
         schemaId,
-        order: createFieldDto.order ?? nextOrder
-      }
+        order: createFieldDto.order ?? nextOrder,
+      },
     });
   }
 
-  async updateField(schemaId: number, fieldId: number, userId: number, updateFieldDto: UpdateFieldDto) {
+  async updateField(
+    schemaId: number,
+    fieldId: number,
+    userId: number,
+    updateFieldDto: UpdateFieldDto,
+  ) {
     const organization = await this.prisma.member.findUnique({
       where: { userId },
       select: { organizationId: true },
@@ -189,18 +217,20 @@ export class SchemaService {
         id: fieldId,
         schema: {
           id: schemaId,
-          organizationId: organization.organizationId
-        }
-      }
+          organizationId: organization.organizationId,
+        },
+      },
     });
 
     if (!field) {
-      throw new NotFoundException('Field not found or does not belong to this schema');
+      throw new NotFoundException(
+        'Field not found or does not belong to this schema',
+      );
     }
 
     return this.prisma.field.update({
       where: { id: fieldId },
-      data: updateFieldDto
+      data: updateFieldDto,
     });
   }
 
@@ -220,29 +250,37 @@ export class SchemaService {
         id: fieldId,
         schema: {
           id: schemaId,
-          organizationId: organization.organizationId
-        }
+          organizationId: organization.organizationId,
+        },
       },
       include: {
-        fieldValues: true
-      }
+        fieldValues: true,
+      },
     });
 
     if (!field) {
-      throw new NotFoundException('Field not found or does not belong to this schema');
+      throw new NotFoundException(
+        'Field not found or does not belong to this schema',
+      );
     }
 
     // Check if field has values (products using this field)
     if (field.fieldValues.length > 0) {
-      throw new ConflictException('Cannot delete field that has values. Delete associated products first.');
+      throw new ConflictException(
+        'Cannot delete field that has values. Delete associated products first.',
+      );
     }
 
     return this.prisma.field.delete({
-      where: { id: fieldId }
+      where: { id: fieldId },
     });
   }
 
-    async reorderFields(schemaId: number, userId: number, reorderFieldsDto: ReorderFieldsDto) {
+  async reorderFields(
+    schemaId: number,
+    userId: number,
+    reorderFieldsDto: ReorderFieldsDto,
+  ) {
     const organization = await this.prisma.member.findUnique({
       where: { userId },
       select: { organizationId: true },
@@ -254,20 +292,22 @@ export class SchemaService {
 
     // Verify schema ownership
     const schema = await this.prisma.productSchema.findFirst({
-      where: { id: schemaId, organizationId: organization.organizationId }
+      where: { id: schemaId, organizationId: organization.organizationId },
     });
 
     if (!schema) {
-      throw new NotFoundException('Schema not found or does not belong to organization');
+      throw new NotFoundException(
+        'Schema not found or does not belong to organization',
+      );
     }
 
     // Verify all fields belong to this schema
-    const fieldIds = reorderFieldsDto.fields.map(f => f.fieldId);
+    const fieldIds = reorderFieldsDto.fields.map((f) => f.fieldId);
     const fields = await this.prisma.field.findMany({
       where: {
         id: { in: fieldIds },
-        schemaId
-      }
+        schemaId,
+      },
     });
 
     if (fields.length !== fieldIds.length) {
@@ -276,12 +316,12 @@ export class SchemaService {
 
     // Update field orders in a transaction
     return this.prisma.$transaction(
-      reorderFieldsDto.fields.map(fieldOrder =>
+      reorderFieldsDto.fields.map((fieldOrder) =>
         this.prisma.field.update({
           where: { id: fieldOrder.fieldId },
-          data: { order: fieldOrder.order }
-        })
-      )
+          data: { order: fieldOrder.order },
+        }),
+      ),
     );
   }
 
@@ -300,13 +340,15 @@ export class SchemaService {
       where: { id: schemaId, organizationId: organization.organizationId },
       include: {
         fields: {
-          orderBy: { order: 'asc' }
-        }
-      }
+          orderBy: { order: 'asc' },
+        },
+      },
     });
 
     if (!schema) {
-      throw new NotFoundException('Schema not found or does not belong to organization');
+      throw new NotFoundException(
+        'Schema not found or does not belong to organization',
+      );
     }
 
     return schema;
