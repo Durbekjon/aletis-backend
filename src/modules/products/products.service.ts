@@ -259,14 +259,6 @@ export class ProductsService {
           );
         }
         break;
-      case FieldType.IMAGE:
-      case FieldType.FILE:
-        if (typeof value !== 'object' || !value.fileId) {
-          throw new BadRequestException(
-            'File/Image field must be an object with fileId',
-          );
-        }
-        break;
       default:
         throw new BadRequestException(`Unsupported field type: ${field.type}`);
     }
@@ -320,8 +312,6 @@ export class ProductsService {
         result.valueDate = value instanceof Date ? value : new Date(value);
         break;
       case FieldType.ENUM:
-      case FieldType.IMAGE:
-      case FieldType.FILE:
         result.valueJson = value;
         break;
     }

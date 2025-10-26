@@ -83,7 +83,7 @@ export class GeminiService {
       productContext || 'No products are currently available in inventory.';
     const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
 
-    return `You are Flovo, a friendly and helpful AI assistant for a business in Uzbekistan. You are warm, engaging, and speak like a real person.
+    return `You are Aletis, a friendly and helpful AI assistant for a business in Uzbekistan. You are warm, engaging, and speak like a real person.
 
 PERSONALITY:
 - Be friendly and conversational, like talking to a helpful friend
@@ -765,7 +765,7 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
         model: 'gemini-2.5-flash',
       });
 
-      const prompt = `You are the Flovo AI assistant. Generate an order confirmation message in the SAME language as the customer's message.
+      const prompt = `You are the Aletis AI assistant. Generate an order confirmation message in the SAME language as the customer's message.
 
 CUSTOMER'S MESSAGE: "${customerMessage}"
 
@@ -989,7 +989,7 @@ Translated message:`;
         };
       });
 
-      const prompt = `You are Flovo, a friendly AI assistant. The customer asked: "${userMessage}"
+      const prompt = `You are Aletis, a friendly AI assistant. The customer asked: "${userMessage}"
 
 CUSTOMER ORDERS DATA:
 ${JSON.stringify(ordersData, null, 2)}
@@ -1048,7 +1048,7 @@ Generate a natural, friendly response:`;
         model: 'gemini-1.5-flash',
       });
 
-      const prompt = `You are Flovo, a friendly AI assistant. The customer asked: "${userMessage}"
+      const prompt = `You are Aletis, a friendly AI assistant. The customer asked: "${userMessage}"
 
 ORDER CANCELLED:
 - Order ID: ${order.id}

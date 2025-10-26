@@ -23,7 +23,7 @@ async function bootstrap() {
   // CORS configuration
   // const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((s) =>
   //   s.trim(),
-  // ) || ['http://localhost:3000', 'https://flovo.kydanza.me'];
+  // ) || ['http://localhost:3000', 'https://aletis.kydanza.me'];
 
   app.enableCors({
     origin: '*',
@@ -48,8 +48,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   // Swagger (OpenAPI) setup
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Flovo API')
-    .setDescription('REST API documentation for Flovo backend')
+    .setTitle('Aletis API')
+    .setDescription('REST API documentation for Aletis backend')
     .setVersion('1.0')
     .addBearerAuth(
       {
@@ -68,7 +68,7 @@ async function bootstrap() {
     swaggerOptions: {
       persistAuthorization: true,
     },
-    customSiteTitle: 'Flovo API Docs',
+    customSiteTitle: 'Aletis API Docs',
   });
 
   const port = process.env.PORT || 4000;

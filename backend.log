@@ -1,5 +1,5 @@
 
-> flovo-backend@0.0.1 start:dev
+> aletis-backend@0.0.1 start:dev
 > nest start --watch
 
 [2J[3J[H[[90m2:15:41 PM[0m] Starting compilation in watch mode...
