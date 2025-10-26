@@ -1,5 +1,10 @@
 import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
@@ -16,94 +21,111 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller({ path: 'onboarding-progress', version: '1' })
 export class OnboardingProgressController {
-  constructor(private readonly onboardingProgressService: OnboardingProgressService) {}
+  constructor(
+    private readonly onboardingProgressService: OnboardingProgressService,
+  ) {}
 
   @Get('current-step')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get current onboarding step',
-    description: 'Returns the current onboarding step for the user\'s organization'
+    description:
+      "Returns the current onboarding step for the user's organization",
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Current step retrieved successfully',
-    type: CurrentStepResponseDto
+    type: CurrentStepResponseDto,
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'User is not a member of any organization or onboarding progress not found'
+  @ApiResponse({
+    status: 404,
+    description:
+      'User is not a member of any organization or onboarding progress not found',
   })
-  async getCurrentStep(@CurrentUser() user: JwtPayload): Promise<CurrentStepResponseDto> {
+  async getCurrentStep(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<CurrentStepResponseDto> {
     return this.onboardingProgressService.getCurrentStep(Number(user.userId));
   }
 
   @Get()
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get onboarding progress',
-    description: 'Returns the onboarding progress for the user\'s organization'
+    description: "Returns the onboarding progress for the user's organization",
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Onboarding progress retrieved successfully',
-    type: OnboardingProgressResponseDto
+    type: OnboardingProgressResponseDto,
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'User is not a member of any organization or onboarding progress not found'
+  @ApiResponse({
+    status: 404,
+    description:
+      'User is not a member of any organization or onboarding progress not found',
   })
   async getOnboardingProgress(@CurrentUser() user: JwtPayload): Promise<any> {
-    return this.onboardingProgressService.getOnboardingProgress(Number(user.userId));
+    return this.onboardingProgressService.getOnboardingProgress(
+      Number(user.userId),
+    );
   }
 
   @Get('steps')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get all onboarding steps',
-    description: 'Returns a list of all available onboarding steps in order'
+    description: 'Returns a list of all available onboarding steps in order',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Onboarding steps retrieved successfully',
-    type: OnboardingStepsResponseDto
+    type: OnboardingStepsResponseDto,
   })
   getOnboardingSteps(): OnboardingStepsResponseDto {
     return this.onboardingProgressService.getOnboardingSteps();
   }
 
   @Get('progress')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get full onboarding progress',
-    description: 'Returns the complete onboarding progress for the user\'s organization'
+    description:
+      "Returns the complete onboarding progress for the user's organization",
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Onboarding progress retrieved successfully',
-    type: OnboardingProgressResponseDto
+    type: OnboardingProgressResponseDto,
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'User is not a member of any organization or onboarding progress not found'
+  @ApiResponse({
+    status: 404,
+    description:
+      'User is not a member of any organization or onboarding progress not found',
   })
-  async getProgress(@CurrentUser() user: JwtPayload): Promise<OnboardingProgressResponseDto> {
+  async getProgress(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OnboardingProgressResponseDto> {
     return this.onboardingProgressService.getProgress(Number(user.userId));
   }
 
   @Patch('next-step')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Update to next onboarding step',
-    description: 'Updates the onboarding progress to the specified step and recalculates percentage and status'
+    description:
+      'Updates the onboarding progress to the specified step and recalculates percentage and status',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Onboarding progress updated successfully',
-    type: OnboardingProgressResponseDto
+    type: OnboardingProgressResponseDto,
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'User is not a member of any organization'
+  @ApiResponse({
+    status: 404,
+    description: 'User is not a member of any organization',
   })
   async handleNextStep(
     @CurrentUser() user: JwtPayload,
-    @Body() dto: UpdateNextStepDto
+    @Body() dto: UpdateNextStepDto,
   ): Promise<OnboardingProgressResponseDto> {
-    return this.onboardingProgressService.handleNextStep(Number(user.userId), dto.step);
+    return this.onboardingProgressService.handleNextStep(
+      Number(user.userId),
+      dto.step,
+    );
   }
 }

@@ -12,7 +12,10 @@ export class PostsScheduler {
     private readonly postsService: PostsService,
   ) {
     // Poll every 30 seconds
-    setInterval(() => this.processScheduledPosts().catch(() => undefined), 30_000);
+    setInterval(
+      () => this.processScheduledPosts().catch(() => undefined),
+      30_000,
+    );
   }
 
   private async processScheduledPosts(): Promise<void> {
@@ -32,14 +35,17 @@ export class PostsScheduler {
         // Skip if deleted right before send (defensive; findMany already ensures existence)
         await this.postsService.sendPostToTelegram(post.id);
       } catch (err) {
-        this.logger.error(`Failed to send scheduled post ${post.id}: ${err?.message}`);
+        this.logger.error(
+          `Failed to send scheduled post ${post.id}: ${err?.message}`,
+        );
         await this.prisma.post.update({
           where: { id: post.id },
-          data: { status: PostStatus.FAILED, failLog: err?.message?.toString().slice(0, 1000) },
+          data: {
+            status: PostStatus.FAILED,
+            failLog: err?.message?.toString().slice(0, 1000),
+          },
         });
       }
     }
   }
 }
-
-

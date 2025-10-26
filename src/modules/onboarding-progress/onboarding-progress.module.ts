@@ -4,6 +4,6 @@ import { OnboardingProgressService } from './onboarding-progress.service';
 
 @Module({
   controllers: [OnboardingProgressController],
-  providers: [OnboardingProgressService]
+  providers: [OnboardingProgressService],
 })
 export class OnboardingProgressModule {}

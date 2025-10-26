@@ -115,12 +115,14 @@ export class FileService {
         },
       });
 
-      this.logger.log(`File uploaded successfully: ${savedFile.id} - ${fileKey}`);
+      this.logger.log(
+        `File uploaded successfully: ${savedFile.id} - ${fileKey}`,
+      );
 
       return savedFile;
     } catch (error) {
       this.logger.error(`Failed to upload file: ${error.message}`, error.stack);
-      
+
       // Clean up file if it exists
       try {
         if (file?.path) {
@@ -147,7 +149,7 @@ export class FileService {
       throw new BadRequestException('No files provided');
     }
 
-    const uploadPromises = files.map(file =>
+    const uploadPromises = files.map((file) =>
       this.uploadFile(file, uploaderId, organizationId, productId),
     );
 
@@ -228,7 +230,9 @@ export class FileService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(`Failed to delete file by key ${key}: ${error.message}`);
+      this.logger.error(
+        `Failed to delete file by key ${key}: ${error.message}`,
+      );
       throw new InternalServerErrorException('Failed to delete file');
     }
   }
@@ -249,8 +253,8 @@ export class FileService {
       });
 
       if (files.length !== fileIds.length) {
-        const foundIds = files.map(f => f.id);
-        const missingIds = fileIds.filter(id => !foundIds.includes(id));
+        const foundIds = files.map((f) => f.id);
+        const missingIds = fileIds.filter((id) => !foundIds.includes(id));
         throw new NotFoundException(
           `Files not found: ${missingIds.join(', ')}`,
         );
@@ -258,7 +262,7 @@ export class FileService {
 
       // Delete from database in transaction
       await this.prisma.$transaction(
-        fileIds.map(id =>
+        fileIds.map((id) =>
           this.prisma.file.delete({
             where: { id },
           }),
@@ -266,11 +270,13 @@ export class FileService {
       );
 
       // Delete from filesystem
-      const deletePromises = files.map(async file => {
+      const deletePromises = files.map(async (file) => {
         const filePath = path.join(process.cwd(), file.key);
         try {
           await unlinkAsync(filePath);
-          this.logger.log(`File deleted successfully: ${file.id} - ${file.key}`);
+          this.logger.log(
+            `File deleted successfully: ${file.id} - ${file.key}`,
+          );
         } catch (fsError) {
           this.logger.warn(`File not found on filesystem: ${file.key}`);
           // Don't throw error if file doesn't exist on filesystem
@@ -280,7 +286,10 @@ export class FileService {
       await Promise.all(deletePromises);
       this.logger.log(`Successfully deleted ${files.length} files`);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       this.logger.error(`Failed to delete multiple files: ${error.message}`);
@@ -321,7 +330,9 @@ export class FileService {
   /**
    * Gets files by organization ID
    */
-  async getFilesByOrganization(organizationId: number): Promise<UploadFileResponseDto[]> {
+  async getFilesByOrganization(
+    organizationId: number,
+  ): Promise<UploadFileResponseDto[]> {
     return this.prisma.file.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
@@ -331,7 +342,9 @@ export class FileService {
   /**
    * Gets files by uploader ID
    */
-  async getFilesByUploader(uploaderId: number): Promise<UploadFileResponseDto[]> {
+  async getFilesByUploader(
+    uploaderId: number,
+  ): Promise<UploadFileResponseDto[]> {
     return this.prisma.file.findMany({
       where: { uploaderId },
       orderBy: { createdAt: 'desc' },

@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsEnum, IsISO8601 } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsISO8601,
+} from 'class-validator';
 import { PostStatus } from '@prisma/client';
 
 export class CreatePostDto {
@@ -16,7 +23,11 @@ export class CreatePostDto {
   @IsNotEmpty()
   content: string;
 
-  @ApiPropertyOptional({ description: 'Initial status', enum: PostStatus, default: PostStatus.DRAFT })
+  @ApiPropertyOptional({
+    description: 'Initial status',
+    enum: PostStatus,
+    default: PostStatus.DRAFT,
+  })
   @IsOptional()
   @IsEnum(PostStatus)
   status?: PostStatus;
@@ -26,5 +37,3 @@ export class CreatePostDto {
   @IsISO8601()
   scheduledAt?: string;
 }
-
-

@@ -44,7 +44,7 @@ async function bootstrap() {
     type: VersioningType.URI,
     defaultVersion: '1',
   });
-  
+
   app.setGlobalPrefix('api');
   // Swagger (OpenAPI) setup
   const swaggerConfig = new DocumentBuilder()

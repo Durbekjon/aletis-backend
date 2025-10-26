@@ -5,6 +5,6 @@ import { PrismaModule } from '@core/prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   providers: [MessagesService],
-  exports: [MessagesService]
+  exports: [MessagesService],
 })
 export class MessagesModule {}

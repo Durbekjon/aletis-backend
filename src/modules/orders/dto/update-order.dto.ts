@@ -12,7 +12,6 @@ export class UpdateOrderDto {
   @IsEnum(PaymentStatus)
   paymentStatus?: PaymentStatus;
 
-
   @ApiPropertyOptional({
     description: 'Order status',
     enum: OrderStatus,

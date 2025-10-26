@@ -65,6 +65,3 @@ export class BotResponseDto {
   })
   statistics: BotStatisticsResponseDto;
 }
-
-
-

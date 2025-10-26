@@ -6,9 +6,9 @@ import { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '@core/encryption/encryption.service';
 import { RedisModule } from '@core/redis/redis.module';
 @Module({
-  imports:[WebhookHelperModule, RedisModule],
+  imports: [WebhookHelperModule, RedisModule],
   controllers: [BotsController],
-  providers: [BotsService,EncryptionService, ConfigService],
-  exports:[BotsService]
+  providers: [BotsService, EncryptionService, ConfigService],
+  exports: [BotsService],
 })
 export class BotsModule {}

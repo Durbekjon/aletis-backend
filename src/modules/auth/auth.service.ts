@@ -148,9 +148,7 @@ export class AuthService {
     return { resetToken };
   }
 
-  async handleGoogleLogin(
-    payload: any,
-  ): Promise<AuthResponse> {
+  async handleGoogleLogin(payload: any): Promise<AuthResponse> {
     if (!payload.email) {
       throw new UnauthorizedException('Google account has no email');
     }
@@ -255,6 +253,56 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
     return user;
+  }
+
+  async updateProfile(
+    userId: number,
+    updateData: {
+      firstName?: string | null;
+      lastName?: string | null;
+    },
+  ): Promise<{
+    id: number;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+  }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+
+    return updatedUser;
+  }
+
+  async updatePassword(
+    userId: number,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Verify old password
+    const isValid = await bcrypt.compare(oldPassword, user.password);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid current password');
+    }
+
+    // Hash and update new password
+    const passwordHash = await this.hashValue(newPassword);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: passwordHash },
+    });
   }
 
   private async updateUserRefreshTokenHash(

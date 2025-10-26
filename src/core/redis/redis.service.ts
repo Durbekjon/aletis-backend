@@ -32,8 +32,18 @@ export class RedisService {
     return await this.redis.del(...keys);
   }
 
-  async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
-    const result = await this.redis.set(key, value, 'PX', ttlSeconds * 1000, 'NX');
+  async setNx(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    const result = await this.redis.set(
+      key,
+      value,
+      'PX',
+      ttlSeconds * 1000,
+      'NX',
+    );
     return result === 'OK';
   }
 }

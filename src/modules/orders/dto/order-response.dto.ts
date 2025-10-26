@@ -66,7 +66,10 @@ export class OrderResponseDto {
   })
   details?: Record<string, any>;
 
-  @ApiPropertyOptional({ description: 'Notes for the order', example: 'Notes for the order' })
+  @ApiPropertyOptional({
+    description: 'Notes for the order',
+    example: 'Notes for the order',
+  })
   notes?: string;
 
   @ApiProperty({ description: 'Organization ID', example: 1 })

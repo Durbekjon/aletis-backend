@@ -14,10 +14,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import {
-  FileInterceptor,
-  FilesInterceptor,
-} from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
@@ -29,7 +26,12 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { FileService } from './file.service';
-import { UploadFileResponseDto, DeleteFilesDto, DeleteFileByKeyDto, FilePaginatedResponseDto } from './dto';
+import {
+  UploadFileResponseDto,
+  DeleteFilesDto,
+  DeleteFileByKeyDto,
+  FilePaginatedResponseDto,
+} from './dto';
 import { PaginationDto } from '@/shared/dto';
 import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@auth/decorators/current-user.decorator';

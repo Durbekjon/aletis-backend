@@ -13,5 +13,3 @@ import { PostsScheduler } from './posts.scheduler';
   exports: [PostsService],
 })
 export class PostsModule {}
-
-

@@ -6,10 +6,7 @@ import { PrismaModule } from '@/core/prisma/prisma.module';
 import { multerConfig } from './config/multer.config';
 
 @Module({
-  imports: [
-    PrismaModule,
-    MulterModule.register(multerConfig),
-  ],
+  imports: [PrismaModule, MulterModule.register(multerConfig)],
   controllers: [FileController],
   providers: [FileService],
   exports: [FileService],

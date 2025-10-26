@@ -1,5 +1,24 @@
-import { Body, Controller, Post, Patch, Delete, Get, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Post,
+  Patch,
+  Delete,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
@@ -91,5 +110,3 @@ export class PostsController {
     return this.postsService.schedulePost(+user.userId, +id, dto.scheduledAt);
   }
 }
-
-

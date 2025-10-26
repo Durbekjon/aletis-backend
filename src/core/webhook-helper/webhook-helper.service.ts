@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface webhookResponse {
-  isOK: boolean,
-  message: string
+  isOK: boolean;
+  message: string;
 }
 
 @Injectable()
