@@ -95,7 +95,7 @@ export class TelegramService {
   //   const userText = message.text;
 
   //   // // Check for channel connection command
-  //   // if (userText === '/connect_flovo') {
+  //   // if (userText === '/connect_aletis') {
   //   //   await this.handleChannelConnection(message);
   //   //   return;
   //   // }
@@ -228,7 +228,7 @@ export class TelegramService {
   //     // Verify that this is a channel
   //     if (message.chat.type !== 'channel') {
   //       this.logger.log(
-  //         `Ignoring /connect_flovo command from non-channel: ${message.chat.type}`,
+  //         `Ignoring /connect_aletis command from non-channel: ${message.chat.type}`,
   //       );
   //       return;
   //     }
@@ -286,13 +286,13 @@ export class TelegramService {
   //   chatId: string,
   // ): Promise<void> {
   //   const confirmationMessage =
-  //     '✅ Flovo has been successfully connected to this channel! You can now use the Autoposting feature from your dashboard.';
+  //     '✅ Aletis has been successfully connected to this channel! You can now use the Autoposting feature from your dashboard.';
   //   await this.sendTelegramMessage(chatId, confirmationMessage);
   // }
 
   // private async sendChannelConnectionError(chatId: string): Promise<void> {
   //   const errorMessage =
-  //     '❌ Failed to connect this channel to Flovo. Please make sure you are registered on Flovo and try again.';
+  //     '❌ Failed to connect this channel to Aletis. Please make sure you are registered on Aletis and try again.';
   //   await this.sendTelegramMessage(chatId, errorMessage);
   // }
 }

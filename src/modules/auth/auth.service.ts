@@ -12,6 +12,7 @@ import { RegisterDto } from './dto/register.dto';
 import crypto from 'node:crypto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { AuthResponse } from './dto/auth-response.dto';
+import { UpdateProfileDto } from './dto';
 
 type Tokens = { accessToken: string; refreshToken: string };
 @Injectable()
@@ -257,10 +258,7 @@ export class AuthService {
 
   async updateProfile(
     userId: number,
-    updateData: {
-      firstName?: string | null;
-      lastName?: string | null;
-    },
+    updateData: UpdateProfileDto,
   ): Promise<{
     id: number;
     email: string;
