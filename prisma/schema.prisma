@@ -177,10 +177,8 @@ enum FieldType {
   TEXT
   NUMBER
   DATE
-  FILE
   BOOLEAN
   ENUM
-  IMAGE
 }
 
 model File {

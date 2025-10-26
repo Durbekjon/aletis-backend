@@ -111,6 +111,15 @@ export class ChannelsService {
     const status = await this.verifyChannelStatus(username, bot);
 
     this.logger.log(`Public channel status: ${status} for @${username}`);
+    const isChannelExists = await this.prisma.channel.findUnique({
+      where: {
+        telegramId: channelInfo.id.toString(),
+      },
+    });
+
+    if (isChannelExists) {
+      throw new BadRequestException('Channel already exists');
+    }
     return this.prisma.channel.create({
       data: {
         telegramId: channelInfo.id.toString(),
