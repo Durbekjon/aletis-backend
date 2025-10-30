@@ -283,6 +283,7 @@ model Customer {
   bot            Bot          @relation(fields: [botId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
   orders         Order[]
+  lang           String?      // "uz" | "ru" | "en"
 
   @@unique([telegramId, organizationId, botId])
   @@index([telegramId])

@@ -131,6 +131,16 @@ export class CustomersService {
     });
   }
 
+  async setCustomerLang(customerId: number, lang: string): Promise<any> {
+    console.log('[CustomerLang] setCustomerLang input:', { customerId, lang });
+    const updated = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { lang },
+    });
+    console.log('[CustomerLang][DB Updated]', updated);
+    return updated;
+  }
+
   private async validateUser(userId: number): Promise<Organization> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

@@ -76,4 +76,13 @@ export class CustomersController {
   ) {
     return this.customersService.getCustomerDetails(Number(user.userId), id);
   }
+
+  @Get(':id/lang/:lang')
+  async setCustomerLang(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('lang') lang: string,
+  ) {
+    await this.customersService.setCustomerLang(id, lang);
+    return { success: true };
+  }
 }
