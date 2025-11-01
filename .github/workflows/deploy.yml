@@ -13,10 +13,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -27,14 +23,34 @@ jobs:
             cd ~/aletis/aletis-backend/
             echo "📦 Pulling latest code..."
             git pull origin main
-            echo "🛑 Stopping app..."
-            pm2 stop 5 || true
-            echo "📦 Installing dependencies..."
-            pnpm install
-            echo "🗃 Running Prisma migrations..."
-            npx prisma migrate deploy
-            echo "🏗 Building project..."
-            yarn build
-            echo "🚀 Restarting app..."
-            pm2 restart 5
+            
+            echo "🐳 Checking Docker and Docker Compose..."
+            docker --version
+            docker compose version
+            
+            echo "📥 Pulling latest base images..."
+            docker compose pull postgres redis || true
+            
+            echo "🏗 Building Docker image for app..."
+            docker compose build app
+            
+            echo "🔄 Ensuring all services are up (preserving database and redis)..."
+            docker compose up -d postgres redis
+            echo "⏳ Waiting for database and redis to be ready..."
+            sleep 5
+            docker compose up -d --no-deps app
+            
+            echo "⏳ Waiting for app to be healthy..."
+            sleep 15
+            
+            echo "📊 Checking service status..."
+            docker compose ps
+            
+            echo "📝 Checking app logs..."
+            docker compose logs --tail=50 app
+            
+            echo "🏥 Running health check..."
+            curl -f http://localhost:4000/health || echo "⚠️ Health check failed, but container may still be starting..."
+            
             echo "✅ Deployment finished!"
+            echo "🔍 Health check: http://${{ secrets.SERVER_HOST }}/health"

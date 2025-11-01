@@ -283,6 +283,7 @@ model Customer {
   bot            Bot          @relation(fields: [botId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
   orders         Order[]
+  lang           String?      // "uz" | "ru" | "en"
 
   @@unique([telegramId, organizationId, botId])
   @@index([telegramId])
@@ -301,6 +302,7 @@ model Message {
   customer   Customer   @relation(fields: [customerId], references: [id])
   botId      Int
   bot        Bot        @relation(fields: [botId], references: [id])
+  isInquiry  Boolean    @default(false)
 
   @@index([botId, createdAt])
   @@map("messages")
@@ -324,10 +326,12 @@ model Order {
   notes            String?
   products       Product[]    @relation("ordered_products")
   orderItems     OrderItem[]
+  currency       String       @default("USD")
 
   @@index([organizationId, status, createdAt(sort: Desc)], name: "idx_orders_org_status_created")
   @@index([customerId], name: "idx_orders_customer_id")
   @@index([status], name: "idx_orders_status")
+  @@index([organizationId, createdAt], name: "idx_orders_org_created")
   @@map("orders")
 }
 
@@ -336,6 +340,23 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+}
+
+model AnalyticsDailyAggregate {
+  id              Int      @id @default(autoincrement())
+  organizationId  Int
+  day             DateTime
+  revenue         Float    @default(0)
+  orders          Int      @default(0)
+  conversations   Int      @default(0)
+  inquiries       Int      @default(0)
+  newCustomers    Int      @default(0)
+  ordersCompleted Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@unique([organizationId, day], name: "organizationId_day_unique")
+  @@index([organizationId, day], name: "idx_analytics_org_day")
+  @@map("analytics_daily_aggregates")
 }
 
 model OrderItem {

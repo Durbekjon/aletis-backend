@@ -40,21 +40,151 @@ export class WebhookService {
     botId: number,
     organizationId: number,
   ) {
+    // LOG webhook input
+    console.log('webhook called', { webhookData });
+
+    // Prioritize callback_query (inline button) handling
+    if (
+      webhookData.callback_query &&
+      webhookData.callback_query.data &&
+      webhookData.callback_query.data.startsWith('lang_')
+    ) {
+      const { message, data, id: callbackQueryId } = webhookData.callback_query;
+      const lang = data.replace('lang_', '');
+      console.log('[Webhook] Entered callback_query lang_ handler', {
+        callback_query: webhookData.callback_query,
+        botId,
+        organizationId,
+      });
+      let customer: any = null;
+      let chatId: string | undefined = undefined;
+      let messageId: number | undefined = undefined;
+      if (message && message.chat && message.chat.id) {
+        chatId = message.chat.id.toString();
+        messageId = message.message_id;
+        try {
+          customer = await this.customersService._getCustomerByTelegramId(
+            chatId,
+            organizationId,
+            botId,
+          );
+        } catch (err) {
+          console.error(
+            '[Webhook] Customer lookup FAILED in callback_query',
+            err,
+          );
+        }
+      }
+      console.log('[Webhook] Fetched customer in callback_query:', customer);
+      // Find bot to fetch token
+      const botObj = await this.botService._getBot(botId, organizationId);
+      const decyptedToken = botObj
+        ? this.encryptionService.decrypt(botObj.token)
+        : '';
+      if (!customer || !chatId || !messageId) {
+        // Respond to callback_query so Telegram doesn't hang
+        if (decyptedToken) {
+          await this.telegramService.sendRequest(
+            decyptedToken,
+            'answerCallbackQuery',
+            {
+              callback_query_id: callbackQueryId,
+              text: 'User not found for this action! Please try /start again.',
+              show_alert: true,
+            },
+          );
+        }
+        return {
+          status: 'error',
+          error: 'Customer or message details not found in callback_query',
+        };
+      }
+      // Must always respond promptly!
+      await this.telegramService.sendRequest(
+        decyptedToken,
+        'answerCallbackQuery',
+        {
+          callback_query_id: callbackQueryId,
+        },
+      );
+      await this.telegramService.handleLanguageSelect(
+        chatId,
+        messageId,
+        lang,
+        customer.id,
+        decyptedToken,
+      );
+      return { status: 'lang_selected', lang };
+    }
+
+    // Normal message handler...
     const result = await this.validateWebhook(
       webhookData,
       botId,
       organizationId,
     );
+    console.log('validateWebhook result', { result });
     if (!result) {
       return { status: 'ok' };
     }
     const { bot, customer } = result;
     const decyptedToken = this.encryptionService.decrypt(bot.token);
-    const isValid = await this.validateMessage(webhookData, bot);
-    if (!isValid) return;
+    // Give every message/callback entry point its own validation
+    let isValid = false;
+    if (webhookData.message) {
+      isValid = await this.validateMessage(webhookData, bot);
+      console.log('validateMessage result', { isValid });
+      if (!isValid) return;
+    }
+
+    // Handle Telegram language selection via callback_query (inline button)
+    if (
+      webhookData.callback_query &&
+      webhookData.callback_query.data &&
+      webhookData.callback_query.data.startsWith('lang_')
+    ) {
+      this.logger.verbose(
+        `callback_query received: ${JSON.stringify(webhookData.callback_query)}`,
+      );
+      const { message, data } = webhookData.callback_query;
+      const lang = data.replace('lang_', '');
+      if (!message) {
+        this.logger.error(
+          'Missing message context for callback query',
+          webhookData.callback_query,
+        );
+        return {
+          status: 'error',
+          error: 'Missing message context for callback query',
+        };
+      }
+      this.logger.log(
+        `Processing language selection callback for lang='${lang}', chatId=${message.chat.id}, messageId=${message.message_id}, customer=${customer.id}`,
+      );
+      await this.telegramService.handleLanguageSelect(
+        message.chat.id.toString(),
+        message.message_id,
+        lang,
+        customer.id,
+        decyptedToken,
+      );
+      this.logger.log(
+        `Language selection processed for lang='${lang}', customer=${customer.id}`,
+      );
+      return { status: 'lang_selected', lang };
+    }
 
     // Get message content
     const messageContent = webhookData.message?.text || '';
+
+    if (messageContent === '/start') {
+      // Send onboarding language select
+      await this.telegramService.handleStartCommand(
+        customer.telegramId,
+        decyptedToken,
+      );
+      return { status: 'onboarding' };
+    }
 
     // Save individual message to database
     await this.messagesService._saveMessage(
@@ -306,13 +436,15 @@ export class WebhookService {
     botId: number,
     organizationId: number,
   ): Promise<{ bot: Bot; customer: Customer } | null> {
-    if (this.processedUpdates.has(webhookData.update_id)) {
+    if (!webhookData.message && !webhookData.callback_query) {
+      console.log('validateWebhook no message or callback_query', {
+        webhookData,
+      });
       return null;
     }
-    if (!webhookData.message) {
-      return null;
+    if (!webhookData.callback_query) {
+      this.processedUpdates.add(webhookData.update_id);
     }
-    this.processedUpdates.add(webhookData.update_id);
 
     const [bot, customer] = await Promise.all([
       this.botService._getBot(botId, organizationId),
@@ -333,26 +465,34 @@ export class WebhookService {
     bot: Bot,
   ): Promise<boolean> {
     const message = webhookData.message;
-    if (!message) {
+    const callbackQuery = webhookData.callback_query;
+    console.log({ message, callbackQuery });
+    if (!message && !callbackQuery) {
       return false;
     }
-    const messageDate = new Date(message.date * 1000); // Telegram sends Unix timestamp
-    const currentTime = new Date();
-    const timeDifference = currentTime.getTime() - messageDate.getTime();
-    const maxAgeMinutes =
-      this.configService.get<number>('MAX_MESSAGE_AGE_MINUTES') || 5; // Configurable, default 5 minutes
+    if (message && !callbackQuery) {
+      const messageDate = new Date(message.date * 1000); // Telegram sends Unix timestamp
+      const currentTime = new Date();
+      const timeDifference = currentTime.getTime() - messageDate.getTime();
+      const maxAgeMinutes =
+        this.configService.get<number>('MAX_MESSAGE_AGE_MINUTES') || 5; // Configurable, default 5 minutes
 
-    if (timeDifference > maxAgeMinutes * 60 * 1000) {
-      this.logger.log(
-        `Ignoring old message from chat ${message.chat.id}. Message age: ${Math.round(timeDifference / 1000 / 60)} minutes (max: ${maxAgeMinutes} minutes)`,
-      );
-      return false;
-    }
+      if (timeDifference > maxAgeMinutes * 60 * 1000) {
+        this.logger.log(
+          `Ignoring old message from chat ${message.chat.id}. Message age: ${Math.round(timeDifference / 1000 / 60)} minutes (max: ${maxAgeMinutes} minutes)`,
+        );
+        return false;
+      }
 
-    if (bot.updatedAt && messageDate < bot.updatedAt) {
-      this.logger.log(
-        `Ignoring message from chat ${message.chat.id} that arrived before bot was enabled. Message: ${messageDate.toISOString()}, Bot enabled: ${bot.updatedAt.toISOString()}`,
-      );
+      if (bot.updatedAt && messageDate < bot.updatedAt) {
+        this.logger.log(
+          `Ignoring message from chat ${message.chat.id} that arrived before bot was enabled. Message: ${messageDate.toISOString()}, Bot enabled: ${bot.updatedAt.toISOString()}`,
+        );
+        return false;
+      }
+    } else if (callbackQuery && !message) {
+      return true;
+    } else {
       return false;
     }
     return true;
@@ -380,11 +520,13 @@ export class WebhookService {
       `📊 Total products available: ${productContext.split('Product ID:').length - 1}`,
     );
 
+    // Use customer.lang if set to force language; fallback is existing prompt logic (auto-detect)
     const aiResponse = await this.geminiService.generateResponse(
       message,
       history,
       productContext,
       userOrders,
+      customer.lang || undefined, // new param
     );
 
     this.logger.log(

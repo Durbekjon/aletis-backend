@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aletis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aletis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aletis_password}
+      POSTGRES_DB: ${POSTGRES_DB:-aletis_db}
+    ports:
+      - "4001:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aletis} -d ${POSTGRES_DB:-aletis_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aletis-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: aletis-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aletis-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aletis_backend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4000}:4000"
+    env_file:
+      - .env
+    volumes:
+      - ./public/uploads:/app/public/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aletis-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  aletis-network:
+    driver: bridge
+

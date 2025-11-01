@@ -30,6 +30,7 @@ export class GeminiService {
     conversationHistory: Message[],
     productContext?: string,
     userOrders?: any[],
+    lang?: string, // new
   ): Promise<AiResponse> {
     try {
       const model = this.genAI.getGenerativeModel({
@@ -41,6 +42,7 @@ export class GeminiService {
         conversationHistory,
         productContext,
         userOrders,
+        lang, // new
       );
 
       this.logger.log('Generating AI response...');
@@ -58,7 +60,6 @@ export class GeminiService {
         `Error generating AI response: ${error.message}`,
         error.stack,
       );
-
       // Fallback response
       return {
         text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
@@ -71,6 +72,7 @@ export class GeminiService {
     history: Message[],
     productContext?: string,
     userOrders?: any[],
+    lang?: string,
   ): string {
     // Build conversation context (limit to last 6 messages to avoid repetition)
     const recentHistory = history.slice(0, 6);
@@ -83,7 +85,12 @@ export class GeminiService {
       productContext || 'No products are currently available in inventory.';
     const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
 
-    return `You are Aletis, a friendly and helpful AI assistant for a business in Uzbekistan. You are warm, engaging, and speak like a real person.
+    let langInstruction = '';
+    if (lang && ['uz', 'ru', 'en'].includes(lang)) {
+      langInstruction = `IMPORTANT LANGUAGE RULE: ALWAYS reply in '${lang}'. Ignore any detection rules below.\n`;
+    }
+
+    return `${langInstruction}You are Aletis, a friendly and helpful AI assistant for a business in Uzbekistan. You are warm, engaging, and speak like a real person.
 
 PERSONALITY:
 - Be friendly and conversational, like talking to a helpful friend

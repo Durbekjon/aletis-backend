@@ -98,9 +98,10 @@ export class OnboardingProgressService {
               : 0;
     let status: OnboardingStatus = OnboardingStatus.INCOMPLETE;
     if (percentage === 100) status = OnboardingStatus.COMPLETED;
+    const nextStep = this.getNextStepKey(step)
     return this.prisma.onboardingProgress.update({
       where: { organizationId: organization.organizationId },
-      data: { nextStep: step, percentage, status },
+      data: { nextStep, percentage, status },
     });
   }
 
@@ -117,5 +118,16 @@ export class OnboardingProgressService {
       default:
         return null;
     }
+  }
+
+  private getNextStepKey(currentStep: OnboardingStep): OnboardingStep {
+    const { steps } = this.getOnboardingSteps();
+    let nextStepIndex = 0;
+    for (let i = 0; i < steps.length; i++) {
+      if (currentStep === steps[i]) {
+        nextStepIndex = i + 1;
+      }
+    }
+    return steps[nextStepIndex];
   }
 }

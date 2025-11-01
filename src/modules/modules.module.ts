@@ -14,6 +14,7 @@ import { PostsModule } from './posts/posts.module';
 import { OrdersModule } from './orders/orders.module';
 import { OnboardingProgressModule } from './onboarding-progress/onboarding-progress.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     OrdersModule,
     OnboardingProgressModule,
     DashboardModule,
+    AnalyticsModule,
   ],
 })
 export class ModulesModule {}

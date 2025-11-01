@@ -80,3 +80,7 @@ export class TelegramWebhookDto {
   @Type(() => TelegramMessageDto)
   message?: TelegramMessageDto;
 }
+
+export class LangSelectDto {
+  lang: string;
+}
