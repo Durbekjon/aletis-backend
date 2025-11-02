@@ -986,6 +986,7 @@ export class ProductsService {
         images: true,
       },
     });
+    this.logger.log(`Products for AI: ${JSON.stringify(products)}`);
     return this.transformProductsToString(products);
   }
 

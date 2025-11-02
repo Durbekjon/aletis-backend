@@ -72,30 +72,21 @@ export class TelegramService {
     botToken: string,
   ) {
     try {
-      console.log('[LangSelect] START', {
-        customerId,
-        lang,
-        chatId,
-        messageId,
-      });
       let dbResult = null;
       try {
         dbResult = await this.customersService.setCustomerLang(
           customerId,
           lang,
         );
-        console.log('[LangSelect] DB update success:', dbResult);
       } catch (err) {
         console.error('[LangSelect] DB update FAILED:', err);
       }
-      console.log('[LangSelect] Pre-deleteMessage', { chatId, messageId });
       let deleteMsgRes = null;
       try {
         deleteMsgRes = await this.sendRequest(botToken, 'deleteMessage', {
           chat_id: chatId,
           message_id: messageId,
         });
-        console.log('[LangSelect] deleteMessage result:', deleteMsgRes);
       } catch (e) {
         console.error('[LangSelect] deleteMessage failed:', e);
       }
@@ -111,30 +102,18 @@ export class TelegramService {
           greetings = JSON.parse(fs.readFileSync(localePath, 'utf8'));
           translationFound = true;
         }
-        console.log(
-          '[LangSelect] Translation found:',
-          translationFound,
-          localePath,
-          greetings,
-        );
       } catch (err) {
         console.error('[LangSelect] Translation file error:', err);
       }
-      console.log('[LangSelect] Sending greeting...', {
-        chatId,
-        greeting: greetings.greeting,
-      });
       let greetingRes = null;
       try {
         greetingRes = await this.sendRequest(botToken, 'sendMessage', {
           chat_id: chatId,
           text: greetings.greeting,
         });
-        console.log('[LangSelect] sendMessage result:', greetingRes);
       } catch (e) {
         console.error('[LangSelect] sendMessage failed:', e);
       }
-      console.log('[LangSelect] END');
     } catch (err) {
       console.error('[LangSelect] Total error:', err);
     }

@@ -97,8 +97,6 @@ export class CustomersService {
     });
   }
 
-  // keep only the org-scoped version used by controller
-
   async _getCustomerByTelegramId(
     telegramId: string,
     organizationId: number,
@@ -132,12 +130,10 @@ export class CustomersService {
   }
 
   async setCustomerLang(customerId: number, lang: string): Promise<any> {
-    console.log('[CustomerLang] setCustomerLang input:', { customerId, lang });
     const updated = await this.prisma.customer.update({
       where: { id: customerId },
       data: { lang },
     });
-    console.log('[CustomerLang][DB Updated]', updated);
     return updated;
   }
 

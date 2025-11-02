@@ -40,9 +40,6 @@ export class WebhookService {
     botId: number,
     organizationId: number,
   ) {
-    // LOG webhook input
-    console.log('webhook called', { webhookData });
-
     // Prioritize callback_query (inline button) handling
     if (
       webhookData.callback_query &&
@@ -51,11 +48,6 @@ export class WebhookService {
     ) {
       const { message, data, id: callbackQueryId } = webhookData.callback_query;
       const lang = data.replace('lang_', '');
-      console.log('[Webhook] Entered callback_query lang_ handler', {
-        callback_query: webhookData.callback_query,
-        botId,
-        organizationId,
-      });
       let customer: any = null;
       let chatId: string | undefined = undefined;
       let messageId: number | undefined = undefined;
@@ -75,7 +67,6 @@ export class WebhookService {
           );
         }
       }
-      console.log('[Webhook] Fetched customer in callback_query:', customer);
       // Find bot to fetch token
       const botObj = await this.botService._getBot(botId, organizationId);
       const decyptedToken = botObj
@@ -123,7 +114,6 @@ export class WebhookService {
       botId,
       organizationId,
     );
-    console.log('validateWebhook result', { result });
     if (!result) {
       return { status: 'ok' };
     }
@@ -133,7 +123,6 @@ export class WebhookService {
     let isValid = false;
     if (webhookData.message) {
       isValid = await this.validateMessage(webhookData, bot);
-      console.log('validateMessage result', { isValid });
       if (!isValid) return;
     }
 
@@ -356,7 +345,6 @@ export class WebhookService {
             .trim();
 
           const htmlMessage = this.markdownToHtml(cleanedText);
-          console.log({ htmlMessage });
           const res = await this.telegramService.sendRequest(
             decryptedToken,
             'sendMessage',
@@ -437,9 +425,6 @@ export class WebhookService {
     organizationId: number,
   ): Promise<{ bot: Bot; customer: Customer } | null> {
     if (!webhookData.message && !webhookData.callback_query) {
-      console.log('validateWebhook no message or callback_query', {
-        webhookData,
-      });
       return null;
     }
     if (!webhookData.callback_query) {
@@ -466,7 +451,6 @@ export class WebhookService {
   ): Promise<boolean> {
     const message = webhookData.message;
     const callbackQuery = webhookData.callback_query;
-    console.log({ message, callbackQuery });
     if (!message && !callbackQuery) {
       return false;
     }
@@ -513,12 +497,7 @@ export class WebhookService {
       bot.organizationId,
     );
 
-    this.logger.log(`🤖 AI PROCESSING - Customer message: "${message}"`);
-    this.logger.log(`📦 PRODUCT CONTEXT PROVIDED TO AI:`);
-    this.logger.log(productContext);
-    this.logger.log(
-      `📊 Total products available: ${productContext.split('Product ID:').length - 1}`,
-    );
+    this.logger.log(`Product context: ${productContext}`);
 
     // Use customer.lang if set to force language; fallback is existing prompt logic (auto-detect)
     const aiResponse = await this.geminiService.generateResponse(
@@ -528,15 +507,6 @@ export class WebhookService {
       userOrders,
       customer.lang || undefined, // new param
     );
-
-    this.logger.log(
-      `🤖 AI RESPONSE GENERATED: ${aiResponse.text?.substring(0, 100)}...`,
-    );
-    if (aiResponse.orderData) {
-      this.logger.log(
-        `📋 AI ORDER DATA: ${JSON.stringify(aiResponse.orderData, null, 2)}`,
-      );
-    }
 
     return aiResponse;
   }
