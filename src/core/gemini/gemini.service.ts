@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Message } from '@prisma/client';
+import { PrismaService } from '@/core/prisma/prisma.service';
 
 export interface AiResponse {
   text: string;
@@ -17,7 +18,10 @@ export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private readonly genAI: GoogleGenerativeAI;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY is required');
@@ -51,7 +55,7 @@ export class GeminiService {
       const text = response.text();
 
       // Parse the response for intents
-      const parsedResponse = this.parseResponse(text);
+      const parsedResponse = await this.parseResponse(text);
 
       this.logger.log(`AI response generated: ${text.substring(0, 100)}...`);
       return parsedResponse;
@@ -177,7 +181,7 @@ EXAMPLE RESPONSES:
 CURRENT INVENTORY:
 ${productInfo}
 
-IMPORTANT: When customers want to order products, use the exact Product ID (numeric) from the inventory list above, NOT the product name. For example, if a product shows "Product ID: 123 | Name: Laptop", use productId: 123, not "Laptop".
+IMPORTANT: When customers want to order products, use the exact Product ID (numeric) from the inventory list above, NOT the product name. For example, if a product shows "Product ID: 123 | Name: {productName1}", use productId: 123, not "{productName1}".
 
 INVENTORY ANALYSIS:
 - Carefully review the inventory list above
@@ -186,9 +190,9 @@ INVENTORY ANALYSIS:
 - If customer asks for multiple products but only some are available, create items only for available products
 
 CURRENT INVENTORY CHECK:
-- Product ID: 1 = LAPTOP (price: 1300 USD)
-- Product ID: 2 = Jonka qiz (price: 100 USD)
-- When customer says "jonka qiz va laptop" or "laptop va jonka qiz", you MUST include BOTH products
+- Product ID: 1 = {productName1} (price: {productPrice1} {productCurrency1})
+- Product ID: 2 = {productName2} (price: {productPrice2} {productCurrency2})
+- When customer says "{productName1} va {productName2}" or "{productName2} va {productName1}", you MUST include BOTH products
 - NEVER create an order with only one product when customer mentions multiple products
 
 ${
@@ -252,7 +256,7 @@ CRITICAL ORDER CREATION RULES:
 - Be polite but firm about needing complete information
 
 CRITICAL RULES FOR MULTIPLE PRODUCTS:
-- If customer mentions multiple products (e.g., "laptop va telefon", "both X and Y"), create separate items for EACH product
+- If customer mentions multiple products (e.g., "{productName} va telefon", "both X and Y"), create separate items for EACH product
 - Each product mentioned by the customer should have its own item object in the items array
 - Use exact numeric product ID from inventory, NOT product name
 - If a product mentioned by customer is not in inventory, skip that product but include the ones that exist
@@ -276,13 +280,13 @@ MANDATORY MULTIPLE PRODUCTS HANDLING:
 - NEVER create incomplete JSON that will cause parsing errors
 
 EXAMPLES:
-- Customer: "laptop va telefon sotib olaman" → Create 2 items (one for laptop, one for telefon)
-- Customer: "Jonka qiz va laptop ni birdaniga sotib olaman" → Create 2 items (one for Jonka qiz, one for laptop)
-- Customer: "3 ta telefon va 2 ta laptop" → Create 2 items (one with quantity 3 for telefon, one with quantity 2 for laptop)
+- Customer: "{productName} va telefon sotib olaman" → Create 2 items (one for {productName}, one for telefon)
+- Customer: "{productName} va {productName} ni birdaniga sotib olaman" → Create 2 items (one for {productName}, one for {productName})
+- Customer: "3 ta telefon va 2 ta {productName}" → Create 2 items (one with quantity 3 for telefon, one with quantity 2 for {productName})
 
 SPECIFIC EXAMPLE FOR CURRENT CASE:
-Customer: "jonka qiz va laptop ni birdaniga sotib olaman"
-Available products: Product ID: 1 (LAPTOP), Product ID: 2 (Jonka qiz)
+Customer: "{productName1} va {productName2} ni birdaniga sotib olaman"
+Available products: Product ID: 1 ({productName1}), Product ID: 2 ({productName2})
 Response should be:
 [INTENT:CREATE_ORDER]
 {
@@ -297,15 +301,15 @@ Response should be:
     {
       "productId": 1,
       "quantity": 1,
-      "price": 1300
+      "price": {productPrice}
     }
   ],
   "notes": ""
 }
 
-CRITICAL: If customer mentions "jonka qiz va laptop" or "laptop va jonka qiz", you MUST create TWO items:
-- One item with productId: 2 (Jonka qiz, price: 100)
-- One item with productId: 1 (LAPTOP, price: 1300)
+CRITICAL: If customer mentions "{productName} va {productName}" or "{productName} va {productName}", you MUST create TWO items:
+- One item with productId: 2 ({productName2}, price: {productPrice2} {productCurrency2})
+- One item with productId: 1 ({productName1}, price: {productPrice1} {productCurrency1})
 - ALWAYS include BOTH products in the items array
 - NEVER create incomplete JSON that stops after the first item
 
@@ -333,9 +337,9 @@ MANDATORY JSON COMPLETION RULES:
 }
 
 EXAMPLES OF ASK_FOR_INFO:
-- Customer: "laptop sotib olaman" (no contact/location/payment) → Ask for missing info
-- Customer: "jonka qiz va laptop sotib olaman, telefon: +998901234567" (missing location/payment) → Ask for location and payment method
-- Customer: "laptop sotib olaman, manzil: Toshkent" (missing contact/payment) → Ask for contact and payment method
+- Customer: "{productName} sotib olaman" (no contact/location/payment) → Ask for missing info
+- Customer: "{productName} va {productName} sotib olaman, telefon: +998901234567" (missing location/payment) → Ask for location and payment method
+- Customer: "{productName} sotib olaman, manzil: Toshkent" (missing contact/payment) → Ask for contact and payment method
 
 
 IMPORTANT CONVERSATION RULES:
@@ -353,7 +357,7 @@ Customer: ${userText}
 IMPORTANT: Read the conversation history carefully. If the customer has already agreed to order something or if you've already asked about ordering, don't repeat yourself. Move the conversation forward naturally.`;
   }
 
-  private parseResponse(aiText: string): AiResponse {
+  private async parseResponse(aiText: string): Promise<AiResponse> {
     // First, try to parse strict JSON for product inquiry outputs
     const extractJson = (text: string): any | null => {
       try {
@@ -696,34 +700,56 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
         const confirmationData = JSON.parse(orderConfirmationMatch[1]);
 
         // Convert ORDER_CONFIRMATION to CREATE_ORDER format
+        // Extract product info from items and look up actual product IDs and prices
+        let items = [];
+        if (Array.isArray(confirmationData.items)) {
+          // Process each item string to extract product name and quantity
+          const itemPromises = confirmationData.items.map(
+            async (item: string) => {
+              // Try to extract product info from item string like "ProductName (1 dona)"
+              const match = item.match(/^(.+?)\s*\((\d+)\s*dona?\)$/);
+              const productName = match ? match[1].trim() : item.trim();
+              const quantity = match ? parseInt(match[2]) || 1 : 1;
+
+              // Look up product by name (without organizationId for broader search)
+              const product = await this.findProductByName(productName);
+
+              if (product) {
+                return {
+                  productId: product.id,
+                  quantity,
+                  price: product.price,
+                };
+              }
+
+              // Fallback if product not found
+              this.logger.warn(
+                `Product not found for item: "${productName}", using defaults`,
+              );
+              return {
+                productId: 1,
+                quantity,
+                price: 0, // Default price when product not found
+              };
+            },
+          );
+
+          items = await Promise.all(itemPromises);
+        } else {
+          // Default fallback item
+          items = [
+            {
+              productId: 1,
+              quantity: 1,
+              price: 0,
+            },
+          ];
+        }
+
         const orderData = {
           customerName: 'Not provided',
           customerContact: confirmationData.phoneNumber || 'Not provided',
-          items: Array.isArray(confirmationData.items)
-            ? confirmationData.items.map((item: string) => {
-                // Try to extract product info from item string like "LAPTOP (1 dona)"
-                const match = item.match(/(\w+)\s*\((\d+)\s*dona?\)/);
-                if (match) {
-                  // For now, use default values - this should be improved to lookup actual product
-                  return {
-                    productId: 1, // TODO: Lookup actual product ID by name
-                    quantity: parseInt(match[2]) || 1,
-                    price: 1300, // TODO: Get actual price from product lookup
-                  };
-                }
-                return {
-                  productId: 1,
-                  quantity: 1,
-                  price: 1300,
-                };
-              })
-            : [
-                {
-                  productId: 1,
-                  quantity: 1,
-                  price: 1300,
-                },
-              ],
+          items,
           notes: confirmationData.notes || '',
         };
 
@@ -1105,5 +1131,69 @@ If you change your mind, you can always place a new order! Is there anything els
       REFUNDED: '💰',
     };
     return statusEmojis[status] || '📋';
+  }
+
+  /**
+   * Find a product by name (and optionally by organization ID)
+   * @param productName - The name of the product to find
+   * @param organizationId - Optional organization ID to scope the search
+   * @returns Product with id, price, and currency, or null if not found
+   */
+  private async findProductByName(
+    productName: string,
+    organizationId?: number,
+  ): Promise<{ id: number; price: number; currency: string } | null> {
+    try {
+      if (!productName || !productName.trim()) {
+        return null;
+      }
+
+      const searchName = productName.trim();
+      const where: any = {
+        name: {
+          contains: searchName,
+          mode: 'insensitive',
+        },
+        isDeleted: false,
+      };
+
+      // If organizationId is provided, scope the search to that organization
+      if (organizationId) {
+        where.organizationId = organizationId;
+      }
+
+      const product = await this.prisma.product.findFirst({
+        where,
+        select: {
+          id: true,
+          price: true,
+          currency: true,
+        },
+        orderBy: {
+          createdAt: 'desc', // Get the most recent product if multiple matches
+        },
+      });
+
+      if (product) {
+        this.logger.log(
+          `Found product "${searchName}": ID=${product.id}, Price=${product.price} ${product.currency}`,
+        );
+        return {
+          id: product.id,
+          price: product.price,
+          currency: product.currency || 'USD',
+        };
+      }
+
+      this.logger.warn(
+        `Product not found: "${searchName}"${organizationId ? ` (orgId: ${organizationId})` : ''}`,
+      );
+      return null;
+    } catch (error) {
+      this.logger.warn(
+        `Error looking up product "${productName}": ${error.message}`,
+      );
+      return null;
+    }
   }
 }
