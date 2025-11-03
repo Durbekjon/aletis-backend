@@ -12,7 +12,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Currency } from '@prisma/client';
+import { Currency, ProductStatus } from '@prisma/client';
 
 export class CreateFieldValueDto {
   @ApiProperty({
@@ -79,6 +79,17 @@ export class CreateProductDto {
   @IsNotEmpty()
   @IsEnum(Currency)
   currency: Currency = Currency.USD;
+
+  @ApiProperty({
+    description: 'The status of the product',
+    enum: ProductStatus,
+    default: ProductStatus.ACTIVE,
+    example: ProductStatus.ACTIVE,
+  })
+  @IsString()
+  @IsNotEmpty()
+  @IsEnum(ProductStatus)
+  status: ProductStatus = ProductStatus.ACTIVE;
 
   @ApiPropertyOptional({
     description: 'Array of file IDs for product images',
