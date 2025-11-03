@@ -234,7 +234,12 @@ export class SchemaService {
     });
   }
 
-  async deleteField(schemaId: number, fieldId: number, userId: number) {
+  async deleteField(
+    schemaId: number,
+    fieldId: number,
+    userId: number,
+    force: boolean = false,
+  ) {
     const organization = await this.prisma.member.findUnique({
       where: { userId },
       select: { organizationId: true },
@@ -265,15 +270,22 @@ export class SchemaService {
     }
 
     // Check if field has values (products using this field)
-    if (field.fieldValues.length > 0) {
+    if (field.fieldValues.length > 0 && !force) {
       throw new ConflictException(
-        'Cannot delete field that has values. Delete associated products first.',
+        'Cannot delete field that has values. Pass force=true to cascade delete values.',
       );
     }
 
-    return this.prisma.field.delete({
-      where: { id: fieldId },
-    });
+    // If forcing, delete field values first to avoid constraint errors, then delete the field
+    if (field.fieldValues.length > 0 && force) {
+      await this.prisma.$transaction([
+        this.prisma.fieldValue.deleteMany({ where: { fieldId } }),
+        this.prisma.field.delete({ where: { id: fieldId } }),
+      ]);
+      return;
+    }
+
+    return this.prisma.field.delete({ where: { id: fieldId } });
   }
 
   async reorderFields(
