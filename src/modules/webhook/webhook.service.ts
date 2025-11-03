@@ -269,30 +269,55 @@ export class WebhookService {
         };
 
         if (images && images.length > 0) {
+          const isSupportedPhoto = (url: string) => /\.(jpe?g|png|webp)(?:\?.*)?$/i.test(url);
+          const toMediaPhoto = (imageUrl: string, index: number) => {
+            const absoluteUrl = toAbsolute(imageUrl);
+            if (!isSupportedPhoto(absoluteUrl)) return null;
+            return {
+              type: 'photo',
+              media: absoluteUrl,
+              ...(index === 0 && {
+                caption: (() => {
+                  const cleanedText = processedResponse.text
+                    .replace(/\[INTENT:CREATE_ORDER\][\s\S]*$/g, '')
+                    .replace(/\[INTENT:ORDER_CONFIRMATION\][\s\S]*$/g, '')
+                    .replace(/\[INTENT:FETCH_ORDERS\][\s\S]*$/g, '')
+                    .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*$/g, '')
+                    .trim();
+                  return cleanedText.length > 1024
+                    ? cleanedText.slice(0, 1010) + '...'
+                    : cleanedText;
+                })(),
+                parse_mode: 'HTML',
+              }),
+            };
+          };
           // If multiple images, use sendMediaGroup (max 10 images)
           if (images.length > 1) {
-            const mediaGroup = images.slice(0, 10).map((imageUrl, index) => {
-              const absoluteUrl = toAbsolute(imageUrl);
-              return {
-                type: 'photo',
-                media: absoluteUrl,
-                // Only add caption to the first image
-                ...(index === 0 && {
-                  caption: (() => {
-                    const cleanedText = processedResponse.text
-                      .replace(/\[INTENT:CREATE_ORDER\][\s\S]*$/g, '')
-                      .replace(/\[INTENT:ORDER_CONFIRMATION\][\s\S]*$/g, '')
-                      .replace(/\[INTENT:FETCH_ORDERS\][\s\S]*$/g, '')
-                      .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*$/g, '')
-                      .trim();
-                    return cleanedText.length > 1024
-                      ? cleanedText.slice(0, 1010) + '...'
-                      : cleanedText;
-                  })(),
+            const mediaGroup = images
+              .slice(0, 10)
+              .map((imageUrl, index) => toMediaPhoto(imageUrl, index))
+              .filter((m) => !!m);
+
+            if (mediaGroup.length === 0) {
+              // If nothing supported, fall back to sending just text
+              const cleanedText = processedResponse.text
+                .replace(/\[INTENT:CREATE_ORDER\][\s\S]*$/g, '')
+                .replace(/\[INTENT:ORDER_CONFIRMATION\][\s\S]*$/g, '')
+                .replace(/\[INTENT:FETCH_ORDERS\][\s\S]*$/g, '')
+                .replace(/\[INTENT:CANCEL_ORDER\][\s\S]*$/g, '')
+                .trim();
+              await this.telegramService.sendRequest(
+                decryptedToken,
+                'sendMessage',
+                {
+                  chat_id: customer.telegramId,
+                  text: this.markdownToHtml(cleanedText),
                   parse_mode: 'HTML',
-                }),
-              };
-            });
+                },
+              );
+              return;
+            }
 
             const res = await this.telegramService.sendRequest(
               decryptedToken,
@@ -313,8 +338,8 @@ export class WebhookService {
               );
             }
           } else {
-            // Single image - use sendPhoto
-            const firstPhoto = toAbsolute(images[0]);
+            // Single image
+            const firstUrl = toAbsolute(images[0]);
             let caption = processedResponse.text
               .replace(/\[INTENT:CREATE_ORDER\][\s\S]*$/g, '')
               .replace(/\[INTENT:ORDER_CONFIRMATION\][\s\S]*$/g, '')
@@ -323,15 +348,25 @@ export class WebhookService {
               .trim();
             if (caption.length > 1024) caption = caption.slice(0, 1010) + '...';
 
+            const method = isSupportedPhoto(firstUrl) ? 'sendPhoto' : 'sendDocument';
+            const payload = isSupportedPhoto(firstUrl)
+              ? {
+                  chat_id: customer.telegramId,
+                  photo: firstUrl,
+                  caption,
+                  parse_mode: 'HTML',
+                }
+              : {
+                  chat_id: customer.telegramId,
+                  document: firstUrl,
+                  caption,
+                  parse_mode: 'HTML',
+                };
+
             const res = await this.telegramService.sendRequest(
               decryptedToken,
-              'sendPhoto',
-              {
-                chat_id: customer.telegramId,
-                photo: firstPhoto,
-                caption,
-                parse_mode: 'HTML',
-              },
+              method,
+              payload,
             );
 
             if (!res.ok) {
