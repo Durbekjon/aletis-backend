@@ -251,12 +251,21 @@ export class WebhookService {
       // Send response to Telegram (single message)
       try {
         const images = (aiResponse as any).images as string[] | undefined;
-        const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
+        const baseUrl =
+          this.configService.get<string>('BASE_URL') ||
+          process.env.BASE_URL ||
+          '';
         const toAbsolute = (url: string) => {
+          // Already absolute
           if (/^https?:\/\//i.test(url)) return url;
-          const left = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-          const right = url.startsWith('/') ? url : `/${url}`;
-          return `${left}${right}`;
+          // Only prefix when pointing to public/* assets
+          if (/^\/?public\//i.test(url)) {
+            const left = baseUrl.replace(/\/+$/g, '');
+            const right = url.replace(/^\/+/, '');
+            return `${left}/${right}`;
+          }
+          // Leave other relative paths unchanged
+          return url;
         };
 
         if (images && images.length > 0) {
