@@ -20,6 +20,8 @@ model User {
   resetTokenExpiry DateTime?
   member           Member?
   files            File[]
+  logoId           Int?
+  logo             File?     @relation("user_logos", fields: [logoId], references: [id], onDelete: SetNull)
 
   @@map("users")
 }
@@ -40,6 +42,8 @@ model Organization {
   files              File[]
   customers          Customer[]
   onboardingProgress OnboardingProgress?
+  logoId             Int?
+  logo               File?               @relation("organization_logos", fields: [logoId], references: [id], onDelete: SetNull)
 
   @@map("organizations")
 }
@@ -61,7 +65,7 @@ model OnboardingProgress {
   id                  Int              @id @default(autoincrement())
   organizationId      Int              @unique
   organization        Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  percentage          Int              @default(20) 
+  percentage          Int              @default(20)
   isCategorySelected  Boolean          @default(false)
   isSchemaConfigured  Boolean          @default(false)
   isFirstProductAdded Boolean          @default(false)
@@ -192,12 +196,14 @@ model File {
   createdAt    DateTime   @default(now())
 
   // Relations
-  uploaderId     Int?
-  uploader       User?         @relation(fields: [uploaderId], references: [id])
-  productId      Int?
-  product        Product?      @relation(fields: [productId], references: [id])
-  organizationId Int?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+  uploaderId        Int?
+  uploader          User?          @relation(fields: [uploaderId], references: [id])
+  productId         Int?
+  product           Product?       @relation(fields: [productId], references: [id])
+  organizationId    Int?
+  organization      Organization?  @relation(fields: [organizationId], references: [id])
+  userLogos         User[]         @relation("user_logos")
+  organizationLogos Organization[] @relation("organization_logos")
 
   @@index([originalName])
   @@index([organizationId, createdAt])
@@ -256,7 +262,7 @@ model Bot {
   organization   Organization @relation(fields: [organizationId], references: [id])
   customers      Customer[]
   channels       Channel[]
-  messages       Message[]    // yangi qo‘shilgan (1:N)
+  messages       Message[] // yangi qo‘shilgan (1:N)
   activatedAt    DateTime?
   deactivatedAt  DateTime?
 
@@ -283,7 +289,7 @@ model Customer {
   bot            Bot          @relation(fields: [botId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
   orders         Order[]
-  lang           String?      // "uz" | "ru" | "en"
+  lang           String? // "uz" | "ru" | "en"
 
   @@unique([telegramId, organizationId, botId])
   @@index([telegramId])
@@ -309,24 +315,24 @@ model Message {
 }
 
 model Order {
-  id             Int          @id @default(autoincrement())
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  status         OrderStatus  @default(NEW)
-  paymentStatus  PaymentStatus @default(PENDING)
-  customerId     Int?
-  customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  details        Json?
-  organizationId Int
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  totalPrice     Float        @default(0)
-  trackingNumber String?
-  discountAmount Float?
+  id                 Int           @id @default(autoincrement())
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  status             OrderStatus   @default(NEW)
+  paymentStatus      PaymentStatus @default(PENDING)
+  customerId         Int?
+  customer           Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  details            Json?
+  organizationId     Int
+  organization       Organization  @relation(fields: [organizationId], references: [id])
+  totalPrice         Float         @default(0)
+  trackingNumber     String?
+  discountAmount     Float?
   discountPercentage Float?
-  notes            String?
-  products       Product[]    @relation("ordered_products")
-  orderItems     OrderItem[]
-  currency       String       @default("USD")
+  notes              String?
+  products           Product[]     @relation("ordered_products")
+  orderItems         OrderItem[]
+  currency           String        @default("USD")
 
   @@index([organizationId, status, createdAt(sort: Desc)], name: "idx_orders_org_status_created")
   @@index([customerId], name: "idx_orders_customer_id")
@@ -366,7 +372,7 @@ model OrderItem {
   productId Int
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantity  Int     @default(1)
-  price     Float   // Price at the time of order (in case product price changes later)
+  price     Float // Price at the time of order (in case product price changes later)
 
   @@unique([orderId, productId])
   @@index([orderId], name: "idx_order_items_order_id")

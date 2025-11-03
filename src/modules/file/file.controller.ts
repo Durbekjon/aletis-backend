@@ -104,18 +104,11 @@ export class FileController {
       throw new Error('No file provided');
     }
 
-    // Get user's organization ID from database
-    const organizationId = await this.getUserOrganizationId(
-      Number(user.userId),
-    );
-    if (!organizationId) {
-      throw new Error('User is not a member of any organization');
-    }
-
     return this.fileService.uploadFile(
       file,
       Number(user.userId),
-      organizationId,
+      // Organization is optional; allow uploads for users without an organization (e.g., profile logos)
+      await this.getUserOrganizationId(Number(user.userId)) || undefined,
     );
   }
 
@@ -166,18 +159,11 @@ export class FileController {
       throw new Error('No files provided');
     }
 
-    // Get user's organization ID from database
-    const organizationId = await this.getUserOrganizationId(
-      Number(user.userId),
-    );
-    if (!organizationId) {
-      throw new Error('User is not a member of any organization');
-    }
-
     return this.fileService.uploadManyFiles(
       files,
       Number(user.userId),
-      organizationId,
+      // Organization is optional; allow uploads for users without an organization
+      await this.getUserOrganizationId(Number(user.userId)) || undefined,
     );
   }
 

@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
+import { FileDeleteService } from '@/core/file-delete/file-delete.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import {
@@ -17,7 +19,12 @@ import {
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(OrganizationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fileDeleteService: FileDeleteService,
+  ) {}
 
   async createOrganization(
     userId: number,
@@ -75,6 +82,9 @@ export class OrganizationsService {
     const organizations = await this.prisma.organization.findMany({
       where: { members: { some: { userId } } },
       orderBy: { createdAt: 'desc' },
+      include: { 
+        logo: true,
+       },
     });
     if (!organizations || organizations.length !== 1) {
       throw new NotFoundException('Organization not found');
@@ -112,14 +122,70 @@ export class OrganizationsService {
     dto: UpdateOrganizationDto,
   ): Promise<Organization> {
     await this.ensureAdmin(userId, id);
-    return this.prisma.organization.update({
+
+    // Get current organization with logo
+    const organization = await this.prisma.organization.findUnique({
+      where: { id },
+      include: { logo: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    // Handle logo update: delete old logo if a new one is provided or if logoId is null
+    let oldLogoKey: string | null = null;
+    if (dto.logoId !== undefined) {
+      // If there's an old logo, get its key for deletion
+      if (organization.logoId && organization.logo) {
+        oldLogoKey = organization.logo.key;
+      }
+
+      // If a new logoId is provided, validate it exists
+      if (dto.logoId !== null) {
+        const newLogo = await this.prisma.file.findUnique({
+          where: { id: dto.logoId },
+        });
+        if (!newLogo) {
+          throw new BadRequestException('Logo file not found');
+        }
+      }
+    }
+
+    // Update organization with new data
+    const updatedOrganization = await this.prisma.organization.update({
       where: { id },
       data: {
         name: dto.name ?? undefined,
         description: dto.description ?? undefined,
         category: dto.category ?? undefined,
+        logoId: dto.logoId ?? undefined,
       },
     });
+
+    // Delete old logo file from filesystem if it was replaced
+    if (oldLogoKey && dto.logoId !== organization.logoId) {
+      try {
+        await this.fileDeleteService.deleteFileByKey(oldLogoKey);
+        // Delete the old logo file record from database
+        if (organization.logoId) {
+          await this.prisma.file.delete({
+            where: { id: organization.logoId },
+          }).catch((error) => {
+            this.logger.warn(
+              `Failed to delete old logo file record: ${error.message}`,
+            );
+          });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete old logo file: ${error.message}`,
+        );
+        // Don't throw error - logo update succeeded even if old file deletion failed
+      }
+    }
+
+    return updatedOrganization;
   }
 
   async deleteOrganization(userId: number, id: number): Promise<Organization> {

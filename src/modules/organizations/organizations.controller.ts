@@ -56,7 +56,11 @@ export class OrganizationsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update organization (admin only)' })
+  @ApiOperation({
+    summary: 'Update organization (admin only)',
+    description:
+      'Update organization information. To upload an organization logo: 1) First upload a file using POST /v1/files/upload, 2) Use the returned file ID as logoId in this request. The old logo will be automatically deleted when updating.',
+  })
   @ApiBody({ type: UpdateOrganizationDto })
   @ApiOkResponse({ description: 'Updated organization' })
   update(
