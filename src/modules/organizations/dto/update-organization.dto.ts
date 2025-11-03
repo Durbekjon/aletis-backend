@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { BUSINESS_CATEGORY } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength, IsInt } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class UpdateOrganizationDto {
   @ApiPropertyOptional({ example: 'New Name' })
@@ -19,4 +20,10 @@ export class UpdateOrganizationDto {
   @IsEnum(BUSINESS_CATEGORY)
   @IsOptional()
   category?: BUSINESS_CATEGORY | null;
+
+  @ApiPropertyOptional({ example: 1, description: 'File ID of the organization logo', nullable: true })
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  logoId?: number | null;
 }

@@ -146,7 +146,11 @@ export class AuthController {
   @Patch('update-profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Update user profile' })
+  @ApiOperation({
+    summary: 'Update user profile',
+    description:
+      'Update user profile information. To upload a profile logo: 1) First upload a file using POST /v1/files/upload, 2) Use the returned file ID as logoId in this request. The old logo will be automatically deleted when updating.',
+  })
   @ApiBody({ type: UpdateProfileDto })
   @ApiOkResponse({
     description: 'Profile updated successfully',

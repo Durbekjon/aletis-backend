@@ -3,10 +3,13 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/core/prisma/prisma.service';
+import { FileDeleteService } from '@/core/file-delete/file-delete.service';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import crypto from 'node:crypto';
@@ -17,10 +20,13 @@ import { UpdateProfileDto } from './dto';
 type Tokens = { accessToken: string; refreshToken: string };
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly fileDeleteService: FileDeleteService,
   ) {}
 
   async register(dto: RegisterDto): Promise<Tokens> {
@@ -245,10 +251,25 @@ export class AuthService {
     email: string;
     firstName: string | null;
     lastName: string | null;
+    logo: {
+      id: number;
+      key: string;
+    } | null;
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, firstName: true, lastName: true, email: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        logo: {
+          select: {
+            id: true,
+            key: true,
+          },
+        },
+      },
     });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -265,16 +286,65 @@ export class AuthService {
     firstName: string | null;
     lastName: string | null;
   }> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { logo: true },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    // Handle logo update: delete old logo if a new one is provided or if logoId is null
+    let oldLogoKey: string | null = null;
+    if (updateData.logoId !== undefined) {
+      // If there's an old logo, get its key for deletion
+      if (user.logoId && user.logo) {
+        oldLogoKey = user.logo.key;
+      }
+
+      // If a new logoId is provided, validate it exists
+      if (updateData.logoId !== null) {
+        const newLogo = await this.prisma.file.findUnique({
+          where: { id: updateData.logoId },
+        });
+        if (!newLogo) {
+          throw new BadRequestException('Logo file not found');
+        }
+      }
+    }
+
+    // Update user with new data
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
-      data: updateData,
+      data: {
+        firstName: updateData.firstName ?? undefined,
+        lastName: updateData.lastName ?? undefined,
+        logoId: updateData.logoId ?? undefined,
+      },
       select: { id: true, email: true, firstName: true, lastName: true },
     });
+
+    // Delete old logo file from filesystem if it was replaced
+    if (oldLogoKey && updateData.logoId !== user.logoId) {
+      try {
+        await this.fileDeleteService.deleteFileByKey(oldLogoKey);
+        // Delete the old logo file record from database
+        if (user.logoId) {
+          await this.prisma.file.delete({
+            where: { id: user.logoId },
+          }).catch((error) => {
+            this.logger.warn(
+              `Failed to delete old logo file record: ${error.message}`,
+            );
+          });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete old logo file: ${error.message}`,
+        );
+        // Don't throw error - logo update succeeded even if old file deletion failed
+      }
+    }
 
     return updatedUser;
   }
