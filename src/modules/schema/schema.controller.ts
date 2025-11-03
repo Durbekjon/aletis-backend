@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { SchemaService } from './schema.service';
 import {
@@ -184,16 +185,21 @@ export class SchemaController {
   @ApiNotFoundResponse({
     description: 'Field not found or does not belong to this schema',
   })
-  @ApiConflictResponse({ description: 'Cannot delete field that has values' })
+  @ApiConflictResponse({
+    description:
+      'Cannot delete field that has values. Pass force=true to cascade delete values.',
+  })
   async deleteField(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) schemaId: number,
     @Param('fieldId', ParseIntPipe) fieldId: number,
+    @Query('force') force?: 'true' | 'false',
   ) {
     return this.schemaService.deleteField(
       schemaId,
       fieldId,
       Number(user.userId),
+      force === 'true',
     );
   }
 }
