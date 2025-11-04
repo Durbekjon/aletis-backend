@@ -137,6 +137,69 @@ export class FileService {
   }
 
   /**
+   * Saves a downloaded file from URL/buffer to filesystem and database
+   */
+  async saveDownloadedFile(
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+    organizationId?: number,
+    uploaderId?: number,
+  ): Promise<UploadFileResponseDto> {
+    this.logger.log(
+      `[saveDownloadedFile] Starting: originalName=${originalName}, size=${buffer.length}, mimeType=${mimeType}, organizationId=${organizationId}, uploaderId=${uploaderId}`,
+    );
+    try {
+      const uniqueFilename = this.generateUniqueFilename(originalName);
+      const fileKey = `public/uploads/${uniqueFilename}`;
+      const filePath = path.join(process.cwd(), fileKey);
+
+      this.logger.log(`[saveDownloadedFile] Generated unique filename: ${uniqueFilename}, fileKey: ${fileKey}`);
+
+      // Ensure directory exists
+      await this.ensureUploadsDirectory();
+
+      // Write buffer to file
+      this.logger.log(`[saveDownloadedFile] Writing buffer to file: ${filePath}`);
+      await fs.writeFile(filePath, buffer);
+
+      // Determine file type
+      const fileType = this.getFileType(mimeType);
+      this.logger.log(`[saveDownloadedFile] File type determined: ${fileType}`);
+
+      // Save metadata to database
+      this.logger.log(`[saveDownloadedFile] Creating file record in database`);
+      const savedFile = await this.prisma.file.create({
+        data: {
+          key: fileKey,
+          originalName,
+          size: buffer.length,
+          mimeType,
+          type: fileType,
+          status: FileStatus.READY,
+          uploaderId,
+          organizationId,
+        },
+      });
+
+      this.logger.log(
+        `[saveDownloadedFile] SUCCESS: File saved with id=${savedFile.id}, key=${fileKey}, size=${savedFile.size}`,
+      );
+
+      return savedFile;
+    } catch (error) {
+      this.logger.error(
+        `[saveDownloadedFile] ERROR: Failed to save downloaded file: ${error.message}`,
+        error.stack,
+      );
+      this.logger.error(
+        `[saveDownloadedFile] ERROR DETAILS: originalName=${originalName}, size=${buffer.length}, organizationId=${organizationId}, errorType=${error.constructor.name}`,
+      );
+      throw new InternalServerErrorException('Failed to save downloaded file');
+    }
+  }
+
+  /**
    * Uploads multiple files and saves metadata to database
    */
   async uploadManyFiles(

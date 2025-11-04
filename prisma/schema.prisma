@@ -206,6 +206,8 @@ model File {
   organization      Organization?  @relation(fields: [organizationId], references: [id])
   userLogos         User[]         @relation("user_logos")
   organizationLogos Organization[] @relation("organization_logos")
+  botLogos          Bot[]          @relation("bot_logos")
+  channelLogos      Channel[]      @relation("channel_logos")
 
   @@index([originalName])
   @@index([organizationId, createdAt])
@@ -267,6 +269,8 @@ model Bot {
   messages       Message[] // yangi qo‘shilgan (1:N)
   activatedAt    DateTime?
   deactivatedAt  DateTime?
+  logoId         Int?
+  logo           File?        @relation("bot_logos", fields: [logoId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, name])
   @@index([organizationId, username])
@@ -396,6 +400,8 @@ model Channel {
   organizationId Int              @unique
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   posts          Post[]
+  logoId         Int?
+  logo           File?            @relation("channel_logos", fields: [logoId], references: [id], onDelete: SetNull)
 
   @@unique([telegramId, username, organizationId])
   @@map("channels")

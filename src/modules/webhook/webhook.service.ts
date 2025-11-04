@@ -324,13 +324,13 @@ export class WebhookService {
       }
     }
 
-    // Save individual message to database
-    await this.messagesService._saveMessage(
-      customer.id,
-      messageContent,
-      'USER',
-      bot.id,
-    );
+      // Save individual message to database
+      await this.messagesService._saveMessage(
+        customer.id,
+        messageContent,
+        'USER',
+        bot.id,
+      );
 
     this.logger.log(
       `Message received from customer ${customer.id}: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}"`,

@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/core/prisma/prisma.service';
 import { FileDeleteService } from '@/core/file-delete/file-delete.service';
+import { TelegramLoggerService } from '@/core/telegram-logger/telegram-logger.service';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import crypto from 'node:crypto';
@@ -27,6 +28,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly fileDeleteService: FileDeleteService,
+    private readonly telegramLogger: TelegramLoggerService,
   ) {}
 
   async register(dto: RegisterDto): Promise<Tokens> {
@@ -52,6 +54,15 @@ export class AuthService {
     });
     const tokens = await this.issueTokens(user.id);
     await this.updateUserRefreshTokenHash(user.id, tokens.refreshToken);
+
+    // Send Telegram notification about new user registration
+    const totalCount = await this.prisma.user.count();
+    const userName = `${dto.firstName || ''} ${dto.lastName || ''}`.trim() || dto.email;
+    await this.telegramLogger.sendEvent(
+      '🧍 New user registered',
+      `Name: ${userName}\nEmail: ${dto.email}\nTotal users: ${totalCount}`,
+    );
+
     return tokens;
   }
 

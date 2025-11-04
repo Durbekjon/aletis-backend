@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@core/prisma/prisma.service';
@@ -25,6 +26,8 @@ import { BotStatisticsResponseDto } from './dto/bot-response.dto';
 import { RedisService } from '@core/redis/redis.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { ActionType, EntityType } from '@prisma/client';
+import { TelegramService } from '../telegram/telegram.service';
+import { FileService } from '../file/file.service';
 export interface TelegramBotInfo {
   id: string;
   is_bot: boolean;
@@ -39,6 +42,8 @@ export interface TelegramBotInfo {
 
 @Injectable()
 export class BotsService {
+  private readonly logger = new Logger(BotsService.name);
+
   // Cache key patterns for consistent naming
   private readonly CACHE_KEYS = {
     BOT: (id: number) => `bot:${id}`,
@@ -64,6 +69,8 @@ export class BotsService {
     private readonly webhookHelper: WebhookHelperService,
     private readonly redis: RedisService,
     private readonly activityLogService: ActivityLogService,
+    private readonly telegramService: TelegramService,
+    private readonly fileService: FileService,
   ) {}
 
   // ==================== CACHE HELPER METHODS ====================
@@ -75,7 +82,7 @@ export class BotsService {
     try {
       return await this.redis.get<T>(key);
     } catch (error) {
-      console.warn(`Cache get failed for key ${key}:`, error);
+      this.logger.warn(`Cache get failed for key ${key}: ${error.message}`);
       return null;
     }
   }
@@ -87,7 +94,7 @@ export class BotsService {
     try {
       await this.redis.set(key, value, ttl);
     } catch (error) {
-      console.warn(`Cache set failed for key ${key}:`, error);
+      this.logger.warn(`Cache set failed for key ${key}: ${error.message}`);
     }
   }
 
@@ -102,7 +109,9 @@ export class BotsService {
         await this.redis.delMultiple(keys);
       }
     } catch (error) {
-      console.warn(`Cache invalidation failed for pattern ${pattern}:`, error);
+      this.logger.warn(
+        `Cache invalidation failed for pattern ${pattern}: ${error.message}`,
+      );
     }
   }
 
@@ -158,6 +167,16 @@ export class BotsService {
         username: username,
       },
     });
+
+    // Fetch and save bot logo (non-blocking, fail gracefully)
+    this.fetchAndSaveBotLogo(dto.token, bot.id, organization.id).catch(
+      (error) => {
+        this.logger.error(
+          `Failed to fetch bot logo for botId=${bot.id}: ${error.message}`,
+          error.stack,
+        );
+      },
+    );
 
     // Invalidate organization bot caches since a new bot was created
     await this.invalidateOrganizationBotCaches(organization.id);
@@ -222,6 +241,14 @@ export class BotsService {
         skip: paginationDto.skip,
         take: paginationDto.take,
         orderBy: { createdAt: paginationDto.order },
+        include: {
+          logo: {
+            select: {
+              id: true,
+              key: true,
+            },
+          },
+        },
       }),
       this.prisma.bot.count({
         where: { organizationId: organization.id, ...searchFilter },
@@ -246,8 +273,26 @@ export class BotsService {
       paginationDto.limit ?? 20,
     );
 
-    // Cache the result
-    await this.setCache(cacheKey, result, this.TTL.BOTS_LIST);
+    // Don't cache if there are recently created bots without logos (logo fetch in progress)
+    // This prevents caching stale data with logoId: null
+    const now = new Date();
+    const hasRecentBotWithoutLogo = botsWithStatistics.some((bot: any) => {
+      if (!bot.logoId) {
+        const createdAt = new Date(bot.createdAt);
+        const timeSinceCreation = now.getTime() - createdAt.getTime();
+        // If bot was created within last 15 seconds and has no logo, don't cache
+        // This gives time for logo fetch to complete
+        if (timeSinceCreation < 15000) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    // Only cache if there are no recent bots without logos
+    if (!hasRecentBotWithoutLogo) {
+      await this.setCache(cacheKey, result, this.TTL.BOTS_LIST);
+    }
 
     return result;
   }
@@ -401,7 +446,11 @@ export class BotsService {
         entityId: botId,
         action: ActionType.STATUS_CHANGE,
         templateKey: 'BOT_STATUS_CHANGED',
-        data: { name: bot.name, oldStatus: bot.status, newStatus: BotStatus.ACTIVE },
+        data: {
+          name: bot.name,
+          oldStatus: bot.status,
+          newStatus: BotStatus.ACTIVE,
+        },
       });
     }
     return result;
@@ -439,7 +488,11 @@ export class BotsService {
         entityId: botId,
         action: ActionType.STATUS_CHANGE,
         templateKey: 'BOT_STATUS_CHANGED',
-        data: { name: bot.name, oldStatus: bot.status, newStatus: BotStatus.INACTIVE },
+        data: {
+          name: bot.name,
+          oldStatus: bot.status,
+          newStatus: BotStatus.INACTIVE,
+        },
       });
     }
     return result;
@@ -586,6 +639,52 @@ export class BotsService {
   private isValidBotToken(token: string): boolean {
     const tokenPattern = /^\d+:[A-Za-z0-9_-]{35,}$/;
     return tokenPattern.test(token);
+  }
+
+  /**
+   * Fetches bot logo from Telegram and saves it to database
+   */
+  private async fetchAndSaveBotLogo(
+    botToken: string,
+    botId: number,
+    organizationId: number,
+  ): Promise<void> {
+    try {
+      const logoData = await this.telegramService.getBotLogo(
+        botToken,
+        organizationId,
+      );
+
+      if (!logoData) {
+        return;
+      }
+
+      // Save logo using FileService
+      const savedFile = await this.fileService.saveDownloadedFile(
+        logoData.buffer,
+        logoData.originalName,
+        logoData.mimeType,
+        organizationId,
+      );
+
+      // Update bot with logoId
+      await this.prisma.bot.update({
+        where: { id: botId },
+        data: { logoId: savedFile.id },
+      });
+
+      // Invalidate caches after logo update
+      await Promise.all([
+        this.invalidateBotCaches(botId),
+        this.invalidateOrganizationBotCaches(organizationId),
+      ]);
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch and save bot logo for botId=${botId}: ${error.message}`,
+        error.stack,
+      );
+      // Don't throw - fail gracefully
+    }
   }
 
   private async validateUser(userId: number): Promise<Organization> {

@@ -9,6 +9,7 @@ import { WebhookHelperModule } from './webhook-helper/webhook-helper.module';
 import { MessageBufferModule } from './message-buffer/message-buffer.module';
 import { RedisModule } from './redis/redis.module';
 import { FileDeleteModule } from './file-delete/file-delete.module';
+import { TelegramLoggerModule } from './telegram-logger/telegram-logger.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { FileDeleteModule } from './file-delete/file-delete.module';
     MessageBufferModule,
     RedisModule,
     FileDeleteModule,
+    TelegramLoggerModule,
   ],
   providers: [EncryptionService, GeminiService, RetryService],
   exports: [

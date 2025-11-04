@@ -1,10 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CustomersService } from '@/modules/customers/customers.service';
+import { FileService } from '@/modules/file/file.service';
 @Injectable()
 export class TelegramService {
-  constructor(private readonly customersService: CustomersService) {}
+  private readonly logger = new Logger(TelegramService.name);
+
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly fileService: FileService,
+  ) {}
   async sendRequest(
     botToken: string,
     method: string,
@@ -116,6 +122,197 @@ export class TelegramService {
       }
     } catch (err) {
       console.error('[LangSelect] Total error:', err);
+    }
+  }
+
+  /**
+   * Fetches bot logo from Telegram API
+   * Flow: getMe → getUserProfilePhotos → getFile → download file
+   */
+  async getBotLogo(
+    botToken: string,
+    organizationId: number,
+  ): Promise<{ buffer: Buffer; mimeType: string; originalName: string } | null> {
+    this.logger.log(`[getBotLogo] Starting for organizationId=${organizationId}`);
+    try {
+      // Step 1: Get bot info
+      this.logger.log(`[getBotLogo] Step 1: Calling getMe API`);
+      const botInfo = await this.sendRequest(botToken, 'getMe', {});
+      if (!botInfo.ok || !botInfo.result) {
+        this.logger.warn(`[getBotLogo] Step 1 FAILED: getMe returned ok=${botInfo.ok}, result=${!!botInfo.result}`);
+        return null;
+      }
+
+      const botUserId = botInfo.result.id;
+      this.logger.log(`[getBotLogo] Step 1 SUCCESS: Bot userId=${botUserId}`);
+
+      // Step 2: Get user profile photos
+      this.logger.log(`[getBotLogo] Step 2: Calling getUserProfilePhotos for userId=${botUserId}`);
+      const photosResponse = await this.sendRequest(botToken, 'getUserProfilePhotos', {
+        user_id: botUserId,
+        limit: 1,
+      });
+
+      if (
+        !photosResponse.ok ||
+        !photosResponse.result ||
+        !photosResponse.result.photos ||
+        photosResponse.result.photos.length === 0
+      ) {
+        this.logger.warn(`[getBotLogo] Step 2 FAILED: ok=${photosResponse.ok}, hasResult=${!!photosResponse.result}, photosCount=${photosResponse.result?.photos?.length || 0}`);
+        return null;
+      }
+
+      // Get the largest photo (last in the sizes array)
+      const photos = photosResponse.result.photos[0];
+      if (!photos || photos.length === 0) {
+        this.logger.warn(`[getBotLogo] Step 2 FAILED: No photo sizes found in first photo`);
+        return null;
+      }
+
+      const largestPhoto = photos[photos.length - 1];
+      const fileId = largestPhoto.file_id;
+      this.logger.log(`[getBotLogo] Step 2 SUCCESS: Found photo with fileId=${fileId}`);
+
+      // Step 3: Get file path
+      this.logger.log(`[getBotLogo] Step 3: Calling getFile for fileId=${fileId}`);
+      const fileResponse = await this.sendRequest(botToken, 'getFile', {
+        file_id: fileId,
+      });
+
+      if (!fileResponse.ok || !fileResponse.result) {
+        this.logger.warn(`[getBotLogo] Step 3 FAILED: ok=${fileResponse.ok}, hasResult=${!!fileResponse.result}`);
+        return null;
+      }
+
+      const filePath = fileResponse.result.file_path;
+      if (!filePath) {
+        this.logger.warn(`[getBotLogo] Step 3 FAILED: file_path is null or undefined`);
+        return null;
+      }
+      this.logger.log(`[getBotLogo] Step 3 SUCCESS: file_path=${filePath}`);
+
+      // Step 4: Download file from Telegram
+      this.logger.log(`[getBotLogo] Step 4: Downloading file from Telegram`);
+      const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+      const fileResponse2 = await fetch(fileUrl);
+
+      if (!fileResponse2.ok) {
+        this.logger.warn(`[getBotLogo] Step 4 FAILED: HTTP ${fileResponse2.status} ${fileResponse2.statusText}`);
+        return null;
+      }
+
+      const buffer = Buffer.from(await fileResponse2.arrayBuffer());
+      const extension = path.extname(filePath).toLowerCase() || '.jpg';
+      const mimeType =
+        extension === '.jpg' || extension === '.jpeg'
+          ? 'image/jpeg'
+          : extension === '.png'
+            ? 'image/png'
+            : extension === '.webp'
+              ? 'image/webp'
+              : 'image/jpeg';
+
+      this.logger.log(`[getBotLogo] Step 4 SUCCESS: Downloaded ${buffer.length} bytes, mimeType=${mimeType}, extension=${extension}`);
+      return {
+        buffer,
+        mimeType,
+        originalName: `bot_logo${extension}`,
+      };
+    } catch (error) {
+      this.logger.error(`[getBotLogo] ERROR: ${error.message}`, error.stack);
+      return null;
+    }
+  }
+
+  /**
+   * Fetches channel logo from Telegram API
+   * Flow: getChat → getFile (if chat photo exists) → download file
+   */
+  async getChannelLogo(
+    botToken: string,
+    chatId: string,
+    organizationId: number,
+  ): Promise<{ buffer: Buffer; mimeType: string; originalName: string } | null> {
+    this.logger.log(`[getChannelLogo] Starting for chatId=${chatId}, organizationId=${organizationId}`);
+    try {
+      // Step 1: Get chat info
+      this.logger.log(`[getChannelLogo] Step 1: Calling getChat for chatId=${chatId}`);
+      const chatInfo = await this.sendRequest(botToken, 'getChat', {
+        chat_id: chatId,
+      });
+
+      if (!chatInfo.ok || !chatInfo.result) {
+        this.logger.warn(`[getChannelLogo] Step 1 FAILED: getChat returned ok=${chatInfo.ok}, result=${!!chatInfo.result}`);
+        return null;
+      }
+
+      this.logger.log(`[getChannelLogo] Step 1 SUCCESS: Chat info retrieved, hasPhoto=${!!chatInfo.result.photo}`);
+
+      // Check if chat has a photo
+      if (!chatInfo.result.photo) {
+        this.logger.warn(`[getChannelLogo] Step 1 FAILED: Channel has no photo property`);
+        return null;
+      }
+
+      const chatPhoto = chatInfo.result.photo;
+
+      // Get the largest photo (big_file_id or small_file_id - use big_file_id)
+      const fileId = chatPhoto.big_file_id || chatPhoto.small_file_id;
+      if (!fileId) {
+        this.logger.warn(`[getChannelLogo] Step 1 FAILED: No file_id found in photo (big_file_id=${chatPhoto.big_file_id}, small_file_id=${chatPhoto.small_file_id})`);
+        return null;
+      }
+      this.logger.log(`[getChannelLogo] Step 1 SUCCESS: Found fileId=${fileId} (big=${!!chatPhoto.big_file_id}, small=${!!chatPhoto.small_file_id})`);
+
+      // Step 2: Get file path
+      this.logger.log(`[getChannelLogo] Step 2: Calling getFile for fileId=${fileId}`);
+      const fileResponse = await this.sendRequest(botToken, 'getFile', {
+        file_id: fileId,
+      });
+
+      if (!fileResponse.ok || !fileResponse.result) {
+        this.logger.warn(`[getChannelLogo] Step 2 FAILED: ok=${fileResponse.ok}, hasResult=${!!fileResponse.result}`);
+        return null;
+      }
+
+      const filePath = fileResponse.result.file_path;
+      if (!filePath) {
+        this.logger.warn(`[getChannelLogo] Step 2 FAILED: file_path is null or undefined`);
+        return null;
+      }
+      this.logger.log(`[getChannelLogo] Step 2 SUCCESS: file_path=${filePath}`);
+
+      // Step 3: Download file from Telegram
+      this.logger.log(`[getChannelLogo] Step 3: Downloading file from Telegram`);
+      const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+      const fileResponse2 = await fetch(fileUrl);
+
+      if (!fileResponse2.ok) {
+        this.logger.warn(`[getChannelLogo] Step 3 FAILED: HTTP ${fileResponse2.status} ${fileResponse2.statusText}`);
+        return null;
+      }
+
+      const buffer = Buffer.from(await fileResponse2.arrayBuffer());
+      const extension = path.extname(filePath).toLowerCase() || '.jpg';
+      const mimeType =
+        extension === '.jpg' || extension === '.jpeg'
+          ? 'image/jpeg'
+          : extension === '.png'
+            ? 'image/png'
+            : extension === '.webp'
+              ? 'image/webp'
+              : 'image/jpeg';
+
+      this.logger.log(`[getChannelLogo] Step 3 SUCCESS: Downloaded ${buffer.length} bytes, mimeType=${mimeType}, extension=${extension}`);
+      return {
+        buffer,
+        mimeType,
+        originalName: `channel_logo${extension}`,
+      };
+    } catch (error) {
+      this.logger.error(`[getChannelLogo] ERROR: ${error.message}`, error.stack);
+      return null;
     }
   }
 }

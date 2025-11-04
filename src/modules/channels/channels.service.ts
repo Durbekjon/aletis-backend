@@ -12,6 +12,8 @@ import { Bot, ConnectionStatus, Prisma, type Channel } from '@prisma/client';
 import { PaginatedResponseDto, PaginationDto } from '@/shared/dto';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { EncryptionService } from '@/core/encryption/encryption.service';
+import { TelegramService } from '../telegram/telegram.service';
+import { FileService } from '../file/file.service';
 
 interface TelegramUser {
   id: number;
@@ -82,6 +84,8 @@ export class ChannelsService {
     private readonly prisma: PrismaService,
     private readonly encryptionService: EncryptionService,
     private readonly activityLogService: ActivityLogService,
+    private readonly telegramService: TelegramService,
+    private readonly fileService: FileService,
   ) {}
 
   async createChannel(
@@ -133,6 +137,24 @@ export class ChannelsService {
         connectedBotId: bot.id,
       },
     });
+
+    // Fetch and save channel logo (non-blocking, fail gracefully)
+    this.logger.log(
+      `[CHANNEL CREATION] Starting logo fetch for channelId=${channel.id}, telegramId=${channelInfo.id}`,
+    );
+    const decryptedToken = this.encryptionService.decrypt(bot.token);
+    this.fetchAndSaveChannelLogo(
+      decryptedToken,
+      channelInfo.id.toString(),
+      channel.id,
+      organizationId,
+    ).catch((error) => {
+      this.logger.error(
+        `[CHANNEL CREATION] Failed to fetch channel logo for channelId=${channel.id}: ${error.message}`,
+        error.stack,
+      );
+    });
+
     await this.activityLogService.createLog({
       organizationId,
       entityType: EntityType.CHANNEL,
@@ -320,6 +342,14 @@ export class ChannelsService {
         skip: paginationDto.skip,
         take: paginationDto.take,
         orderBy: { createdAt: paginationDto.order },
+        include: {
+          logo: {
+            select: {
+              id: true,
+              key: true,
+            },
+          },
+        },
       }),
       this.prisma.channel.count({
         where: { organizationId, ...searchFilter },
@@ -519,6 +549,83 @@ export class ChannelsService {
       });
     }
     return updated;
+  }
+
+  /**
+   * Fetches channel logo from Telegram and saves it to database
+   */
+  private async fetchAndSaveChannelLogo(
+    botToken: string,
+    chatId: string,
+    channelId: number,
+    organizationId: number,
+  ): Promise<void> {
+    this.logger.log(
+      `[START] Fetching channel logo for channelId=${channelId}, chatId=${chatId}, organizationId=${organizationId}`,
+    );
+
+    try {
+      this.logger.log(
+        `[STEP 1] Calling TelegramService.getChannelLogo() for channelId=${channelId}, chatId=${chatId}`,
+      );
+      const logoData = await this.telegramService.getChannelLogo(
+        botToken,
+        chatId,
+        organizationId,
+      );
+
+      if (!logoData) {
+        this.logger.warn(
+          `[STEP 1 FAILED] No logo data returned from Telegram API for channelId=${channelId}, chatId=${chatId}`,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `[STEP 1 SUCCESS] Logo data received: size=${logoData.buffer.length} bytes, mimeType=${logoData.mimeType}, originalName=${logoData.originalName} for channelId=${channelId}`,
+      );
+
+      this.logger.log(
+        `[STEP 2] Saving file to database using FileService for channelId=${channelId}`,
+      );
+      // Save logo using FileService
+      const savedFile = await this.fileService.saveDownloadedFile(
+        logoData.buffer,
+        logoData.originalName,
+        logoData.mimeType,
+        organizationId,
+      );
+
+      this.logger.log(
+        `[STEP 2 SUCCESS] File saved with fileId=${savedFile.id}, key=${savedFile.key} for channelId=${channelId}`,
+      );
+
+      this.logger.log(
+        `[STEP 3] Updating channel record with logoId=${savedFile.id} for channelId=${channelId}`,
+      );
+      // Update channel with logoId
+      const updatedChannel = await this.prisma.channel.update({
+        where: { id: channelId },
+        data: { logoId: savedFile.id },
+      });
+
+      this.logger.log(
+        `[STEP 3 SUCCESS] Channel updated successfully: channelId=${updatedChannel.id}, logoId=${updatedChannel.logoId}`,
+      );
+      this.logger.log(
+        `[COMPLETE] Channel logo saved successfully for channel ${channelId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[ERROR] Failed to fetch and save channel logo for channelId=${channelId}: ${error.message}`,
+        error.stack,
+      );
+      this.logger.error(
+        `[ERROR DETAILS] Error type: ${error.constructor.name}, ChatId: ${chatId}, OrganizationId: ${organizationId}`,
+      );
+      // Re-throw to see the error in the calling context
+      throw error;
+    }
   }
 
   private async validateChannelOwnership(

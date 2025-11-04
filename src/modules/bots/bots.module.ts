@@ -6,8 +6,10 @@ import { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '@core/encryption/encryption.service';
 import { RedisModule } from '@core/redis/redis.module';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { TelegramModule } from '../telegram/telegram.module';
+import { FileModule } from '../file/file.module';
 @Module({
-  imports: [WebhookHelperModule, RedisModule, ActivityLogModule],
+  imports: [WebhookHelperModule, RedisModule, ActivityLogModule, TelegramModule, FileModule],
   controllers: [BotsController],
   providers: [BotsService, EncryptionService, ConfigService],
   exports: [BotsService],

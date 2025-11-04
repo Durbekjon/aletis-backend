@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { IndexModule } from './index.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { GlobalExceptionFilter } from './core/filters/global-exception.filter';
+import { TelegramLoggerService } from './core/telegram-logger/telegram-logger.service';
 import helmet from 'helmet';
 
 async function bootstrap() {
@@ -28,6 +30,10 @@ async function bootstrap() {
   app.enableCors({
     origin: '*',
   });
+
+  // Global exception filter (with dependency injection)
+  const telegramLogger = app.get(TelegramLoggerService);
+  app.useGlobalFilters(new GlobalExceptionFilter(telegramLogger));
 
   // Global pipes
   app.useGlobalPipes(
