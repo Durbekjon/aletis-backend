@@ -295,7 +295,7 @@ export class PostsService {
     const token = this.encryption.decrypt(connectedBot.token);
     const images = post.product.images || [];
     const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
-    const botLink = `<a href="https://t.me/${connectedBot.username}?start=post_${postId}">More Info</a>`;
+    const botLink = `<a href="https://t.me/${connectedBot.username}?start=product_${post.productId}">More Info</a>`;
 
     let telegramId: string | null = null;
     let meta: any = {};

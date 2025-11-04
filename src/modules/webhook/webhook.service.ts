@@ -15,6 +15,7 @@ import {
   MessageBufferService,
   FlushResult,
 } from '@core/message-buffer/message-buffer.service';
+import { PrismaService } from '@core/prisma/prisma.service';
 
 @Injectable()
 export class WebhookService {
@@ -33,6 +34,7 @@ export class WebhookService {
     private readonly ordersService: OrdersService,
     private readonly aiResponseHandler: AiResponseHandlerService,
     private readonly messageBufferService: MessageBufferService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async handleWebhook(
@@ -173,6 +175,153 @@ export class WebhookService {
         decyptedToken,
       );
       return { status: 'onboarding' };
+    } else if (messageContent.startsWith('/start=product_')) {
+      const productIdStr = messageContent.split('=product_')[1];
+      const productId = parseInt(productIdStr, 10);
+
+      if (isNaN(productId)) {
+        await this.telegramService.sendRequest(decyptedToken, 'sendMessage', {
+          chat_id: customer.telegramId,
+          text: '❌ Mahsulot topilmadi.',
+          parse_mode: 'HTML',
+        });
+        return { status: 'error', error: 'Invalid product ID' };
+      }
+
+      try {
+        // Get product with images and fields
+        const product = await this.prisma.product.findFirst({
+          where: {
+            id: productId,
+            organizationId,
+            isDeleted: false,
+          },
+          include: {
+            images: {
+              select: {
+                id: true,
+                key: true,
+                originalName: true,
+              },
+            },
+            fields: {
+              include: {
+                field: true,
+              },
+            },
+            schema: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        });
+
+        if (!product) {
+          await this.telegramService.sendRequest(decyptedToken, 'sendMessage', {
+            chat_id: customer.telegramId,
+            text: '❌ Mahsulot topilmadi.',
+            parse_mode: 'HTML',
+          });
+          return { status: 'error', error: 'Product not found' };
+        }
+
+        // Format product fields
+        const fieldsText = product.fields
+          .map((fv) => {
+            let value = '';
+            if (fv.valueText) value = fv.valueText;
+            else if (fv.valueNumber !== null) value = String(fv.valueNumber);
+            else if (fv.valueBool !== null)
+              value = fv.valueBool ? 'Ha' : "Yo'q";
+            else if (fv.valueDate)
+              value = new Date(fv.valueDate).toLocaleDateString();
+            else if (fv.valueJson) value = String(fv.valueJson);
+            return `<b>${fv.field.name}:</b> ${value}`;
+          })
+          .join('\n');
+
+        // Build product message
+        const baseUrl =
+          this.configService.get<string>('PUBLIC_BASE_URL') ||
+          process.env.PUBLIC_BASE_URL ||
+          '';
+        const productMessage =
+          `<b>${product.name}</b>\n\n` +
+          `<b>Narxi:</b> ${product.price} ${product.currency}\n` +
+          `<b>Miqdori:</b> ${product.quantity}\n` +
+          `<b>Holati:</b> ${product.status}\n` +
+          (fieldsText ? `\n${fieldsText}\n` : '') +
+          `\n<a href="https://t.me/${bot.username}?start=order_${product.id}">📦 Buyurtma berish</a>`;
+
+        // Send product images if available
+        if (product.images && product.images.length > 0) {
+          if (product.images.length > 1) {
+            // Send media group
+            const images = product.images.slice(0, 10).map((img, index) => {
+              const imageUrl = `${baseUrl}/${img.key}`.replace(/\\/g, '/');
+              const mediaItem: any = {
+                type: 'photo',
+                media: imageUrl,
+              };
+              if (index === 0) {
+                mediaItem.caption = productMessage;
+                mediaItem.parse_mode = 'HTML';
+              }
+              return mediaItem;
+            });
+
+            await this.telegramService.sendRequest(
+              decyptedToken,
+              'sendMediaGroup',
+              {
+                chat_id: customer.telegramId,
+                media: images,
+              },
+            );
+          } else {
+            // Send single photo
+            await this.telegramService.sendRequest(decyptedToken, 'sendPhoto', {
+              chat_id: customer.telegramId,
+              photo: `${baseUrl}/${product.images[0].key}`.replace(/\\/g, '/'),
+              caption: productMessage,
+              parse_mode: 'HTML',
+            });
+          }
+        } else {
+          // Send text only if no images
+          await this.telegramService.sendRequest(decyptedToken, 'sendMessage', {
+            chat_id: customer.telegramId,
+            text: productMessage,
+            parse_mode: 'HTML',
+          });
+        }
+
+        // Save message to database
+        await this.messagesService._saveMessage(
+          customer.id,
+          messageContent,
+          'USER',
+          bot.id,
+        );
+
+        this.logger.log(
+          `Product info sent to customer ${customer.id} for product ${productId}`,
+        );
+
+        return { status: 'product_info_sent', productId };
+      } catch (error) {
+        this.logger.error(
+          `Error sending product info: ${error.message}`,
+          error.stack,
+        );
+        await this.telegramService.sendRequest(decyptedToken, 'sendMessage', {
+          chat_id: customer.telegramId,
+          text: "❌ Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.",
+          parse_mode: 'HTML',
+        });
+        return { status: 'error', error: error.message };
+      }
     }
 
     // Save individual message to database
@@ -269,7 +418,8 @@ export class WebhookService {
         };
 
         if (images && images.length > 0) {
-          const isSupportedPhoto = (url: string) => /\.(jpe?g|png|webp)(?:\?.*)?$/i.test(url);
+          const isSupportedPhoto = (url: string) =>
+            /\.(jpe?g|png|webp)(?:\?.*)?$/i.test(url);
           const toMediaPhoto = (imageUrl: string, index: number) => {
             const absoluteUrl = toAbsolute(imageUrl);
             if (!isSupportedPhoto(absoluteUrl)) return null;
@@ -348,7 +498,9 @@ export class WebhookService {
               .trim();
             if (caption.length > 1024) caption = caption.slice(0, 1010) + '...';
 
-            const method = isSupportedPhoto(firstUrl) ? 'sendPhoto' : 'sendDocument';
+            const method = isSupportedPhoto(firstUrl)
+              ? 'sendPhoto'
+              : 'sendDocument';
             const payload = isSupportedPhoto(firstUrl)
               ? {
                   chat_id: customer.telegramId,
