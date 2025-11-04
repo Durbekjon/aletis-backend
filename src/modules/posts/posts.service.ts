@@ -5,7 +5,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { Prisma, PostStatus } from '@prisma/client';
+import { Prisma, PostStatus, ActionType, EntityType } from '@prisma/client';
 import { PrismaService } from '@core/prisma/prisma.service';
 import { EncryptionService } from '@core/encryption/encryption.service';
 import { TelegramService } from '@telegram/telegram.service';
@@ -13,6 +13,7 @@ import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { ConfigService } from '@nestjs/config';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 @Injectable()
 export class PostsService {
@@ -23,6 +24,7 @@ export class PostsService {
     private readonly encryption: EncryptionService,
     private readonly telegram: TelegramService,
     private readonly configService: ConfigService,
+    private readonly activityLogService: ActivityLogService,
   ) {}
 
   private async getUserOrganizationId(userId: number): Promise<number> {
@@ -371,7 +373,7 @@ export class PostsService {
     }
 
     const now = new Date();
-    return this.prisma.post.update({
+    const updated = await this.prisma.post.update({
       where: { id: post.id },
       data: {
         telegramId: telegramId ?? undefined,
@@ -380,6 +382,17 @@ export class PostsService {
         sentAt: now,
       },
     });
+    // Activity Log: Post published
+    await this.activityLogService.createLog({
+      organizationId: post.product.organizationId,
+      entityType: EntityType.PRODUCT,
+      entityId: post.productId,
+      action: ActionType.UPDATE,
+      templateKey: 'POST_PUBLISHED',
+      data: { name: post.product.name },
+      meta: { postId: post.id, channelId: post.channelId },
+    });
+    return updated;
   }
 
   async editPostOnTelegram(postId: number) {

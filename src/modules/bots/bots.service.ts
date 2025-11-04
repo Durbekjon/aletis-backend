@@ -23,6 +23,8 @@ import {
 import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
 import { BotStatisticsResponseDto } from './dto/bot-response.dto';
 import { RedisService } from '@core/redis/redis.service';
+import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ActionType, EntityType } from '@prisma/client';
 export interface TelegramBotInfo {
   id: string;
   is_bot: boolean;
@@ -61,6 +63,7 @@ export class BotsService {
     private readonly encryption: EncryptionService,
     private readonly webhookHelper: WebhookHelperService,
     private readonly redis: RedisService,
+    private readonly activityLogService: ActivityLogService,
   ) {}
 
   // ==================== CACHE HELPER METHODS ====================
@@ -158,6 +161,16 @@ export class BotsService {
 
     // Invalidate organization bot caches since a new bot was created
     await this.invalidateOrganizationBotCaches(organization.id);
+
+    await this.activityLogService.createLog({
+      userId,
+      organizationId: organization.id,
+      entityType: EntityType.BOT,
+      entityId: bot.id,
+      action: ActionType.CREATE,
+      templateKey: 'BOT_CREATED',
+      data: { name: bot.name },
+    });
 
     return bot;
   }
@@ -339,6 +352,16 @@ export class BotsService {
       this.invalidateOrganizationBotCaches(organization.id),
     ]);
 
+    await this.activityLogService.createLog({
+      userId,
+      organizationId: organization.id,
+      entityType: EntityType.BOT,
+      entityId: botId,
+      action: ActionType.DELETE,
+      templateKey: 'BOT_DELETED',
+      data: { name: bot.name },
+    });
+
     return bot;
   }
 
@@ -370,6 +393,16 @@ export class BotsService {
         this.invalidateBotCaches(botId),
         this.invalidateOrganizationBotCaches(organization.id),
       ]);
+
+      await this.activityLogService.createLog({
+        userId,
+        organizationId: organization.id,
+        entityType: EntityType.BOT,
+        entityId: botId,
+        action: ActionType.STATUS_CHANGE,
+        templateKey: 'BOT_STATUS_CHANGED',
+        data: { name: bot.name, oldStatus: bot.status, newStatus: BotStatus.ACTIVE },
+      });
     }
     return result;
   }
@@ -398,6 +431,16 @@ export class BotsService {
         this.invalidateBotCaches(botId),
         this.invalidateOrganizationBotCaches(organization.id),
       ]);
+
+      await this.activityLogService.createLog({
+        userId,
+        organizationId: organization.id,
+        entityType: EntityType.BOT,
+        entityId: botId,
+        action: ActionType.STATUS_CHANGE,
+        templateKey: 'BOT_STATUS_CHANGED',
+        data: { name: bot.name, oldStatus: bot.status, newStatus: BotStatus.INACTIVE },
+      });
     }
     return result;
   }

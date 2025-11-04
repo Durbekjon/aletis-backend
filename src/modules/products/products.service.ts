@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
-import { FieldType, ProductStatus } from '@prisma/client';
+import { FieldType, ProductStatus, ActionType, EntityType } from '@prisma/client';
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -19,6 +19,7 @@ import {
 import { PaginationDto } from '@shared/dto';
 import { RedisService } from '@core/redis/redis.service';
 import { FileDeleteService } from '@core/file-delete/file-delete.service';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 @Injectable()
 export class ProductsService {
@@ -56,6 +57,7 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly fileDeleteService: FileDeleteService,
+    private readonly activityLogService: ActivityLogService,
   ) {}
 
   // ==================== CACHE HELPER METHODS ====================
@@ -440,6 +442,17 @@ export class ProductsService {
 
       this.logger.log(`Product created successfully: ${result.product.id}`);
 
+      // Activity Log: Product Created
+      await this.activityLogService.createLog({
+        userId,
+        organizationId,
+        entityType: EntityType.PRODUCT,
+        entityId: result.product.id,
+        action: ActionType.CREATE,
+        templateKey: 'PRODUCT_CREATED',
+        data: { name: createProductDto.name },
+      });
+
       // Invalidate organization product caches since a new product was created
       await this.invalidateOrganizationProductCaches(organizationId);
 
@@ -578,6 +591,33 @@ export class ProductsService {
 
       this.logger.log(`Product updated successfully: ${result.id}`);
 
+      // Activity Log: Product Updated or Status Changed
+      const oldStatus = existingProduct.status;
+      const newStatus = result.status;
+      if (oldStatus !== newStatus) {
+        await this.activityLogService.createLog({
+          userId,
+          organizationId,
+          entityType: EntityType.PRODUCT,
+          entityId: result.id,
+          action: ActionType.STATUS_CHANGE,
+          templateKey: 'PRODUCT_STATUS_CHANGED',
+          data: { name: result.name, oldStatus, newStatus },
+          meta: { productId: result.id },
+        });
+      } else {
+        await this.activityLogService.createLog({
+          userId,
+          organizationId,
+          entityType: EntityType.PRODUCT,
+          entityId: result.id,
+          action: ActionType.UPDATE,
+          templateKey: 'PRODUCT_UPDATED',
+          data: { name: result.name },
+          meta: { productId: result.id },
+        });
+      }
+
       // Invalidate all caches related to this product and organization
       await Promise.all([
         this.invalidateProductCaches(productId),
@@ -612,6 +652,7 @@ export class ProductsService {
       // Check if product exists and belongs to user's organization
       const product = await this.prisma.product.findFirst({
         where: { id: productId, organizationId },
+        select: { id: true, name: true },
       });
 
       if (!product) {
@@ -651,6 +692,18 @@ export class ProductsService {
       ]);
 
       this.logger.log(`Product deleted successfully: ${productId}`);
+
+      // Activity Log: Product Deleted
+      await this.activityLogService.createLog({
+        userId,
+        organizationId,
+        entityType: EntityType.PRODUCT,
+        entityId: productId,
+        action: ActionType.DELETE,
+        templateKey: 'PRODUCT_DELETED',
+        data: { name: product?.name || String(productId) },
+        meta: { productId },
+      });
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
