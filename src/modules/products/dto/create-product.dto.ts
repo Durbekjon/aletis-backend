@@ -67,9 +67,8 @@ export class CreateProductDto {
     example: 1,
   })
   @IsNumber()
-  @IsNotEmpty()
-  @Min(1)
-  quantity: number = 1;
+  @IsOptional()
+  quantity?: number;
 
   @ApiProperty({
     description: 'The currency of the product',
