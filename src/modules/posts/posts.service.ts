@@ -5,7 +5,13 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { Prisma, PostStatus, ActionType, EntityType } from '@prisma/client';
+import {
+  Prisma,
+  PostStatus,
+  ActionType,
+  EntityType,
+  MemberRole,
+} from '@prisma/client';
 import { PrismaService } from '@core/prisma/prisma.service';
 import { EncryptionService } from '@core/encryption/encryption.service';
 import { TelegramService } from '@telegram/telegram.service';
@@ -37,6 +43,52 @@ export class PostsService {
     return member.organizationId;
   }
 
+  /**
+   * Ensures the user is an ADMIN for the organization
+   * Throws ForbiddenException if user is not an admin
+   */
+  private async ensureAdmin(
+    userId: number,
+    organizationId: number,
+  ): Promise<void> {
+    const member = await this.prisma.member.findFirst({
+      where: {
+        userId,
+        organizationId,
+      },
+      select: { role: true },
+    });
+
+    if (!member) {
+      throw new ForbiddenException('User is not a member of this organization');
+    }
+
+    if (member.role !== MemberRole.ADMIN) {
+      throw new ForbiddenException(
+        'Admin permission required. Only administrators can perform this action.',
+      );
+    }
+  }
+
+  /**
+   * Gets user's member info including role and organization
+   * Returns member info or throws if not found
+   */
+  private async getUserAndRole(userId: number) {
+    const member = await this.prisma.member.findUnique({
+      where: { userId },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!member) {
+      throw new ForbiddenException('User is not a member of any organization');
+    }
+
+    return member;
+  }
+
   private async ensureOwnershipByIds(
     organizationId: number,
     productId: number,
@@ -57,6 +109,7 @@ export class PostsService {
 
   async createPost(userId: number, dto: CreatePostDto) {
     const organizationId = await this.getUserOrganizationId(userId);
+    await this.ensureAdmin(userId, organizationId);
     await this.ensureOwnershipByIds(
       organizationId,
       dto.productId,
@@ -74,6 +127,7 @@ export class PostsService {
         content: dto.content,
         status,
         scheduledAt,
+        organizationId,
       },
     });
     if (status === PostStatus.SCHEDULED && scheduledAt) {
@@ -86,6 +140,7 @@ export class PostsService {
 
   async updatePost(userId: number, postId: number, dto: UpdatePostDto) {
     const organizationId = await this.getUserOrganizationId(userId);
+    await this.ensureAdmin(userId, organizationId);
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
       include: { channel: true, product: true },
@@ -114,6 +169,7 @@ export class PostsService {
 
   async deletePost(userId: number, postId: number) {
     const organizationId = await this.getUserOrganizationId(userId);
+    await this.ensureAdmin(userId, organizationId);
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
       include: { channel: { include: { connectedBot: true } } },
@@ -147,7 +203,9 @@ export class PostsService {
     channelId?: number,
   ) {
     const organizationId = await this.getUserOrganizationId(userId);
-    let whereClause: Prisma.PostWhereInput = {};
+    let whereClause: Prisma.PostWhereInput = {
+      organizationId,
+    };
     if (channelId) {
       const channel = await this.prisma.channel.findUnique({
         where: { id: channelId },
@@ -252,6 +310,7 @@ export class PostsService {
 
   async schedulePost(userId: number, postId: number, scheduledAtISO: string) {
     const organizationId = await this.getUserOrganizationId(userId);
+    await this.ensureAdmin(userId, organizationId);
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
       include: { channel: true, product: true },
@@ -385,12 +444,16 @@ export class PostsService {
     // Activity Log: Post published
     await this.activityLogService.createLog({
       organizationId: post.product.organizationId,
-      entityType: EntityType.PRODUCT,
-      entityId: post.productId,
-      action: ActionType.UPDATE,
+      entityType: EntityType.POST,
+      entityId: post.id,
+      action: ActionType.PUBLISH,
       templateKey: 'POST_PUBLISHED',
       data: { name: post.product.name },
-      meta: { postId: post.id, channelId: post.channelId },
+      meta: {
+        postId: post.id,
+        channelId: post.channelId,
+        productId: post.productId,
+      },
     });
     return updated;
   }

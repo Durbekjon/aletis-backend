@@ -46,7 +46,7 @@ model Organization {
   logoId             Int?
   logo               File?               @relation("organization_logos", fields: [logoId], references: [id], onDelete: SetNull)
   activityLogs       ActivityLog[]
-
+  posts              Post[]
   @@map("organizations")
 }
 
@@ -426,6 +426,8 @@ model Post {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   status      PostStatus @default(DRAFT)
+  organizationId Int
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   metaData    Json?
   telegramId  String?
   scheduledAt DateTime?
@@ -499,6 +501,8 @@ enum EntityType {
   CUSTOMER
   BOT
   CHANNEL
+  SCHEMA
+  POST
 }
 
 enum ActionType {
@@ -506,4 +510,5 @@ enum ActionType {
   UPDATE
   DELETE
   STATUS_CHANGE
+  PUBLISH
 }
