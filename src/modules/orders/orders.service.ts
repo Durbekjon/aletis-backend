@@ -5,7 +5,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { Prisma, OrderStatus } from '@prisma/client';
+import { Prisma, OrderStatus, EntityType, ActionType } from '@prisma/client';
 import { PrismaService } from '@core/prisma/prisma.service';
 import { PaginatedResponseDto } from '@/shared/dto';
 import {
@@ -14,6 +14,7 @@ import {
   UpdateOrderDto,
   OrderPaginationDto,
 } from './dto';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 @Injectable()
 export class OrdersService {
@@ -47,7 +48,10 @@ export class OrdersService {
       },
     },
   };
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly activityLogService: ActivityLogService,
+  ) {}
 
   /**
    * Get the organization ID for a user
@@ -334,7 +338,21 @@ export class OrdersService {
         );
       });
     }
-    return this.mapOrderToResponse(order);
+    const response = this.mapOrderToResponse(order);
+
+    // Activity Log: Order Created
+    await this.activityLogService.createLog({
+      userId,
+      organizationId,
+      entityType: EntityType.ORDER,
+      entityId: order.id,
+      action: ActionType.CREATE,
+      templateKey: 'ORDER_CREATED',
+      data: { orderNumber: response.orderNumber },
+      meta: { totalPrice: finalTotalPrice },
+    });
+
+    return response;
   }
 
   /**
@@ -443,6 +461,12 @@ export class OrdersService {
     await this.ensureOrderOwnership(orderId, organizationId);
     const { paymentStatus, orderStatus, notes } = dto;
 
+    // Fetch old status for logging
+    const before = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+
     const data: Prisma.OrderUpdateInput = {
       updatedAt: new Date(),
     };
@@ -464,7 +488,26 @@ export class OrdersService {
     });
 
     // this.logger.log(`Order ${orderId} status updated to ${dto.status}`);
-    return this.mapOrderToResponse(order);
+    const response = this.mapOrderToResponse(order);
+
+    if (orderStatus && before && before.status !== orderStatus) {
+      await this.activityLogService.createLog({
+        userId,
+        organizationId,
+        entityType: EntityType.ORDER,
+        entityId: order.id,
+        action: ActionType.STATUS_CHANGE,
+        templateKey: 'ORDER_STATUS_CHANGED',
+        data: {
+          orderNumber: response.orderNumber,
+          oldStatus: before.status,
+          newStatus: orderStatus,
+        },
+        meta: { orderId },
+      });
+    }
+
+    return response;
   }
 
   /**
@@ -601,7 +644,19 @@ export class OrdersService {
     this.logger.log(
       `Order created from webhook: ${order.id} for customer: ${customerId} with ${orderItemsData.length} order items`,
     );
-    return this.mapOrderToResponse(order);
+    const response = this.mapOrderToResponse(order);
+
+    await this.activityLogService.createLog({
+      organizationId,
+      entityType: EntityType.ORDER,
+      entityId: order.id,
+      action: ActionType.CREATE,
+      templateKey: 'ORDER_CREATED',
+      data: { orderNumber: response.orderNumber },
+      meta: { source: 'WEBHOOK', totalPrice: calculatedTotalPrice },
+    });
+
+    return response;
   }
 
   /**
@@ -853,7 +908,19 @@ export class OrdersService {
         );
       });
     }
-    return this.mapOrderToResponse(order);
+    const response = this.mapOrderToResponse(order);
+
+    await this.activityLogService.createLog({
+      organizationId,
+      entityType: EntityType.ORDER,
+      entityId: order.id,
+      action: ActionType.CREATE,
+      templateKey: 'ORDER_CREATED',
+      data: { orderNumber: response.orderNumber },
+      meta: { source: 'AI_INTENT', totalPrice },
+    });
+
+    return response;
   }
 
   /**

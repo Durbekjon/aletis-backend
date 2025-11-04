@@ -22,6 +22,7 @@ model User {
   files            File[]
   logoId           Int?
   logo             File?     @relation("user_logos", fields: [logoId], references: [id], onDelete: SetNull)
+  activityLogs     ActivityLog[]
 
   @@map("users")
 }
@@ -44,6 +45,7 @@ model Organization {
   onboardingProgress OnboardingProgress?
   logoId             Int?
   logo               File?               @relation("organization_logos", fields: [logoId], references: [id], onDelete: SetNull)
+  activityLogs       ActivityLog[]
 
   @@map("organizations")
 }
@@ -463,4 +465,39 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
   REFUNDED
+}
+
+// Activity Log
+model ActivityLog {
+  id             Int           @id @default(autoincrement())
+  createdAt      DateTime      @default(now())
+  userId         Int?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organizationId Int
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entityType     EntityType
+  entityId       Int?
+  action         ActionType
+  message_en     String
+  message_uz     String
+  message_ru     String
+  meta           Json?
+
+  @@index([organizationId, createdAt])
+  @@map("activity_logs")
+}
+
+enum EntityType {
+  PRODUCT
+  ORDER
+  CUSTOMER
+  BOT
+  CHANNEL
+}
+
+enum ActionType {
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
 }

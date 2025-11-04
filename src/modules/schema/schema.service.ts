@@ -5,6 +5,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
+import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ActionType, EntityType } from '@prisma/client';
 import {
   CreateSchemaDto,
   UpdateSchemaDto,
@@ -14,7 +16,10 @@ import {
 } from './dto';
 @Injectable()
 export class SchemaService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly activityLogService: ActivityLogService,
+  ) {}
 
   async createSchema(userId: number, createSchemaDto: CreateSchemaDto) {
     const organization = await this.prisma.member.findUnique({
@@ -35,7 +40,7 @@ export class SchemaService {
       throw new ConflictException('Organization already has a product schema');
     }
 
-    return this.prisma.productSchema.create({
+    const created = await this.prisma.productSchema.create({
       data: {
         ...createSchemaDto,
         organization: {
@@ -50,6 +55,18 @@ export class SchemaService {
         },
       },
     });
+
+    await this.activityLogService.createLog({
+      userId,
+      organizationId: organization.organizationId,
+      entityType: EntityType.PRODUCT,
+      entityId: created.id,
+      action: ActionType.CREATE,
+      templateKey: 'SCHEMA_CREATED',
+      data: { name: created.name },
+    });
+
+    return created;
   }
 
   async getSchemaByOrganization(userId: number) {
@@ -105,7 +122,7 @@ export class SchemaService {
       );
     }
 
-    return this.prisma.productSchema.update({
+    const updated = await this.prisma.productSchema.update({
       where: { id: schemaId },
       data: updateSchemaDto,
       include: {
@@ -114,6 +131,16 @@ export class SchemaService {
         },
       },
     });
+    await this.activityLogService.createLog({
+      userId,
+      organizationId: organization.organizationId,
+      entityType: EntityType.PRODUCT,
+      entityId: updated.id,
+      action: ActionType.UPDATE,
+      templateKey: 'SCHEMA_UPDATED',
+      data: { name: updated.name },
+    });
+    return updated;
   }
 
   async deleteSchema(schemaId: number, userId: number) {
@@ -147,9 +174,19 @@ export class SchemaService {
       );
     }
 
-    return this.prisma.productSchema.delete({
+    const deleted = await this.prisma.productSchema.delete({
       where: { id: schemaId },
     });
+    await this.activityLogService.createLog({
+      userId,
+      organizationId: organization.organizationId,
+      entityType: EntityType.PRODUCT,
+      entityId: deleted.id,
+      action: ActionType.DELETE,
+      templateKey: 'SCHEMA_DELETED',
+      data: { name: deleted.name },
+    });
+    return deleted;
   }
 
   // Field Operations

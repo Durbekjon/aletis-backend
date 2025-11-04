@@ -1,4 +1,6 @@
 import { PrismaService } from '@core/prisma/prisma.service';
+import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ActionType, EntityType } from '@prisma/client';
 import {
   BadRequestException,
   ForbiddenException,
@@ -79,6 +81,7 @@ export class ChannelsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryptionService: EncryptionService,
+    private readonly activityLogService: ActivityLogService,
   ) {}
 
   async createChannel(
@@ -120,7 +123,7 @@ export class ChannelsService {
     if (isChannelExists) {
       throw new BadRequestException('Channel already exists');
     }
-    return this.prisma.channel.create({
+    const channel = await this.prisma.channel.create({
       data: {
         telegramId: channelInfo.id.toString(),
         title: channelInfo.title,
@@ -130,6 +133,15 @@ export class ChannelsService {
         connectedBotId: bot.id,
       },
     });
+    await this.activityLogService.createLog({
+      organizationId,
+      entityType: EntityType.CHANNEL,
+      entityId: channel.id,
+      action: ActionType.CREATE,
+      templateKey: 'CHANNEL_CREATED',
+      data: { title: channel.title },
+    });
+    return channel;
   }
 
   private async verifyChannelStatus(
@@ -367,7 +379,7 @@ export class ChannelsService {
       const channelInfo = await this.getChannelInfo(username, bot);
       const status = await this.verifyChannelStatus(username, bot);
 
-      return this.prisma.channel.update({
+      const updated = await this.prisma.channel.update({
         where: { id: channelId },
         data: {
           telegramId: channelInfo.id.toString(),
@@ -376,6 +388,16 @@ export class ChannelsService {
           status,
         },
       });
+      await this.activityLogService.createLog({
+        userId,
+        organizationId,
+        entityType: EntityType.CHANNEL,
+        entityId: updated.id,
+        action: ActionType.UPDATE,
+        templateKey: 'CHANNEL_UPDATED',
+        data: { title: updated.title },
+      });
+      return updated;
     }
 
     // If username is being updated for existing public channel
@@ -394,7 +416,7 @@ export class ChannelsService {
       const channelInfo = await this.getChannelInfo(username, bot);
       const status = await this.verifyChannelStatus(username, bot);
 
-      return this.prisma.channel.update({
+      const updated2 = await this.prisma.channel.update({
         where: { id: channelId },
         data: {
           telegramId: channelInfo.id.toString(),
@@ -403,20 +425,43 @@ export class ChannelsService {
           status,
         },
       });
+      await this.activityLogService.createLog({
+        userId,
+        organizationId,
+        entityType: EntityType.CHANNEL,
+        entityId: updated2.id,
+        action: ActionType.UPDATE,
+        templateKey: 'CHANNEL_UPDATED',
+        data: { title: updated2.title },
+      });
+      return updated2;
     }
 
     // For other updates
-    return this.prisma.channel.update({
+    const updated = await this.prisma.channel.update({
       where: { id: channelId },
       data: updateData,
     });
+    await this.activityLogService.createLog({
+      userId,
+      organizationId,
+      entityType: EntityType.CHANNEL,
+      entityId: updated.id,
+      action: ActionType.UPDATE,
+      templateKey: 'CHANNEL_UPDATED',
+      data: { title: updated.title },
+    });
+    return updated;
   }
 
   async deleteChannel(userId: number, channelId: number): Promise<void> {
     this.logger.log(`Deleting channel ${channelId} for user ${userId}`);
 
     const organizationId = await this.getUserOrganizationId(userId);
-    await this.validateChannelOwnership(channelId, organizationId);
+    const channel = await this.validateChannelOwnership(
+      channelId,
+      organizationId,
+    );
 
     // Delete the channel
     await this.prisma.channel.delete({
@@ -424,6 +469,15 @@ export class ChannelsService {
     });
 
     this.logger.log(`Channel ${channelId} deleted successfully`);
+    await this.activityLogService.createLog({
+      userId,
+      organizationId,
+      entityType: EntityType.CHANNEL,
+      entityId: channelId,
+      action: ActionType.DELETE,
+      templateKey: 'CHANNEL_DELETED',
+      data: { title: channel.title },
+    });
   }
 
   async refreshChannelStatus(
@@ -446,12 +500,25 @@ export class ChannelsService {
       );
     }
 
+    const oldStatus = channel.status;
     const status = await this.verifyChannelStatus(channel.username, bot);
 
-    return this.prisma.channel.update({
+    const updated = await this.prisma.channel.update({
       where: { id: channelId },
       data: { status },
     });
+    if (oldStatus !== updated.status) {
+      await this.activityLogService.createLog({
+        userId,
+        organizationId,
+        entityType: EntityType.CHANNEL,
+        entityId: updated.id,
+        action: ActionType.STATUS_CHANGE,
+        templateKey: 'CHANNEL_STATUS_CHANGED',
+        data: { title: updated.title, oldStatus, newStatus: updated.status },
+      });
+    }
+    return updated;
   }
 
   private async validateChannelOwnership(
