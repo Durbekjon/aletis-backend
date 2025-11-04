@@ -149,6 +149,7 @@ export class PostsService {
     if (
       post.channel.organizationId !== organizationId ||
       post.product.organizationId !== organizationId
+      
     )
       throw new ForbiddenException('Post out of organization');
 
