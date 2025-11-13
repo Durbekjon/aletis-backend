@@ -7,12 +7,16 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Bot, ConnectionStatus, Prisma, type Channel } from '@prisma/client';
 import { PaginatedResponseDto, PaginationDto } from '@/shared/dto';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { EncryptionService } from '@/core/encryption/encryption.service';
-import { TelegramService } from '../telegram/telegram.service';
+import {
+  TelegramService,
+  TELEGRAM_NETWORK_ERROR,
+} from '../telegram/telegram.service';
 import { FileService } from '../file/file.service';
 
 interface TelegramUser {
@@ -251,20 +255,23 @@ export class ChannelsService {
     bot: Bot,
   ): Promise<TelegramGetChatMemberResponse> {
     const decryptedToken = this.encryptionService.decrypt(bot.token);
-    const url = this.buildTelegramApiUrl(decryptedToken, 'getChatMember', {
-      chat_id: `@${username}`,
-      user_id: bot.telegramId.toString(),
-    });
+    const response = await this.telegramService.sendRequest(
+      decryptedToken,
+      'getChatMember',
+      {
+        chat_id: `@${username}`,
+        user_id: bot.telegramId.toString(),
+      },
+    );
 
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(
-        `Telegram API request failed with status ${response.status}`,
+    const errorCode = (response as any)?.error_code;
+    if (errorCode === TELEGRAM_NETWORK_ERROR) {
+      throw new ServiceUnavailableException(
+        'Unable to reach Telegram API. Please try again later.',
       );
     }
 
-    return response.json();
+    return response as TelegramGetChatMemberResponse;
   }
 
   private async getChannelInfo(
@@ -272,18 +279,20 @@ export class ChannelsService {
     bot: Bot,
   ): Promise<TelegramChat> {
     const decryptedToken = this.encryptionService.decrypt(bot.token);
-    const url = this.buildTelegramApiUrl(decryptedToken, 'getChat', {
-      chat_id: `@${username}`,
-    });
+    const data = (await this.telegramService.sendRequest(
+      decryptedToken,
+      'getChat',
+      {
+        chat_id: `@${username}`,
+      },
+    )) as TelegramGetChatResponse;
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new NotFoundException(
-        `Channel @${username} not found or bot (${bot.username}) cannot access it`,
+    const errorCode = (data as any)?.error_code;
+    if (errorCode === TELEGRAM_NETWORK_ERROR) {
+      throw new ServiceUnavailableException(
+        'Unable to reach Telegram API. Please try again later.',
       );
     }
-
-    const data: TelegramGetChatResponse = await response.json();
 
     if (!data.ok || !data.result) {
       throw new BadRequestException(
@@ -292,16 +301,6 @@ export class ChannelsService {
     }
 
     return data.result;
-  }
-
-  private buildTelegramApiUrl(
-    token: string,
-    method: string,
-    params: Record<string, string>,
-  ): string {
-    const baseUrl = `https://api.telegram.org/bot${token}/${method}`;
-    const queryString = new URLSearchParams(params).toString();
-    return `${baseUrl}?${queryString}`;
   }
 
   private sanitizeUsername(username: string): string {

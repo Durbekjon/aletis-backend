@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@core/prisma/prisma.service';
 
 interface OrdersSummary {
@@ -42,7 +42,9 @@ export class DashboardService {
     });
 
     if (!user?.member?.organization) {
-      throw new Error('User not associated with any organization');
+      throw new ForbiddenException(
+        'User is not associated with any organization. Please join or create an organization to access the dashboard.',
+      );
     }
 
     const organizationId = user.member.organization.id;

@@ -47,6 +47,7 @@ model Organization {
   logo               File?               @relation("organization_logos", fields: [logoId], references: [id], onDelete: SetNull)
   activityLogs       ActivityLog[]
   posts              Post[]
+  instagramAccounts  InstagramAccount[]
   @@map("organizations")
 }
 
@@ -511,4 +512,22 @@ enum ActionType {
   DELETE
   STATUS_CHANGE
   PUBLISH
+}
+
+model InstagramAccount {
+  id                  Int       @id @default(autoincrement())
+  organizationId      Int
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  instagramUserId     String    @unique
+  instagramUsername   String?
+  accessTokenEncrypted String
+  refreshTokenEncrypted String?
+  tokenExpiresAt      DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([organizationId, instagramUserId])
+  @@index([organizationId])
+  @@index([instagramUserId])
+  @@map("instagram_accounts")
 }

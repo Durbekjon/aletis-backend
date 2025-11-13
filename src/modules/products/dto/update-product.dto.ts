@@ -7,6 +7,7 @@ import {
   IsInt,
   Min,
   IsEnum,
+  Max,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -58,7 +59,8 @@ export class UpdateProductDto {
     example: 1199.99,
   })
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(0)
   price?: number;
 
@@ -67,9 +69,11 @@ export class UpdateProductDto {
     example: 1,
   })
   @IsOptional()
-  @IsNumber()
-  @Min(1)
-  quantity?: number = 1;
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000)
+  quantity?: number;
 
   @ApiPropertyOptional({
     description: 'The status of the product',
