@@ -1,12 +1,14 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: aletis-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-aletis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aletis_password}
       POSTGRES_DB: ${POSTGRES_DB:-aletis_db}
+    ports:
+      - "4001:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,14 +18,11 @@ services:
       retries: 5
     networks:
       - aletis-network
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        max_replicas_per_node: 1
 
   redis:
     image: redis:7-alpine
+    container_name: aletis-redis
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -35,16 +34,13 @@ services:
       retries: 5
     networks:
       - aletis-network
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        max_replicas_per_node: 1
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: aletis_backend
+    restart: unless-stopped
     ports:
       - "${PORT:-4000}:4000"
     env_file:
@@ -52,24 +48,12 @@ services:
     volumes:
       - ./public/uploads:/app/public/uploads
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - aletis-network
-    deploy:
-      replicas: 2
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          memory: 512M
-          cpus: "0.5"
-      placement:
-        max_replicas_per_node: 1
 
 volumes:
   postgres_data:
@@ -77,4 +61,5 @@ volumes:
 
 networks:
   aletis-network:
-    driver: overlay
+    driver: bridge
+
