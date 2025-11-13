@@ -481,12 +481,12 @@ export class PostsService {
         parse_mode: 'HTML',
       });
 
-        if (!res.ok) {
+      if (!res.ok) {
           this.handleTelegramError(
             res,
             'Failed to edit message caption on Telegram',
-          );
-        }
+        );
+      }
     } catch (error) {
       if (error instanceof ForbiddenException) {
         throw error;

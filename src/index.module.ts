@@ -3,7 +3,6 @@ import { ModulesModule } from '@modules/modules.module';
 import { CoreModule } from '@core/core.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
-import { HealthController } from '@core/health/health.controller';
 
 @Module({
   imports: [
@@ -21,6 +20,5 @@ import { HealthController } from '@core/health/health.controller';
     ModulesModule,
     CoreModule,
   ],
-  controllers: [HealthController],
 })
 export class IndexModule {}

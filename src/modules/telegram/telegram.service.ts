@@ -41,28 +41,28 @@ export class TelegramService {
       );
 
       try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
           signal: controller.signal,
-        });
+    });
 
-        const rawText = await response.text();
-        let parsed: any | undefined;
-        try {
-          parsed = rawText ? JSON.parse(rawText) : undefined;
-        } catch {
-          // non-JSON response
-        }
+    const rawText = await response.text();
+    let parsed: any | undefined;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : undefined;
+    } catch {
+      // non-JSON response
+    }
 
-        const normalized: any = {
-          ok: response.ok && (parsed?.ok ?? true),
-          status: response.status,
-          ...(parsed ?? {}),
-        };
+    const normalized: any = {
+      ok: response.ok && (parsed?.ok ?? true),
+      status: response.status,
+      ...(parsed ?? {}),
+    };
 
-        if (!normalized.ok) {
+    if (!normalized.ok) {
           if (!normalized.error_code) {
             normalized.error_code = parsed?.error_code ?? response.status;
           }
@@ -88,9 +88,9 @@ export class TelegramService {
           );
           (retryError as any).retryable = true;
           throw retryError;
-        }
+    }
 
-        return normalized;
+    return normalized;
       } catch (error) {
         if ((error as any).name === 'AbortError') {
           const timeoutError = new Error(

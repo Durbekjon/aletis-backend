@@ -36,17 +36,17 @@ export class GeminiService {
     userOrders?: any[],
     lang?: string, // new
   ): Promise<AiResponse> {
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-    });
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+      });
 
-    const prompt = this.buildPrompt(
-      userText,
-      conversationHistory,
-      productContext,
-      userOrders,
-      lang, // new
-    );
+      const prompt = this.buildPrompt(
+        userText,
+        conversationHistory,
+        productContext,
+        userOrders,
+        lang, // new
+      );
 
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -56,17 +56,17 @@ export class GeminiService {
             ? 'Generating AI response...'
             : `Generating AI response (attempt ${attempt}/${maxAttempts})...`,
         );
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
 
-        const parsedResponse = await this.parseResponse(text);
+      const parsedResponse = await this.parseResponse(text);
 
         this.logger.log(
           `AI response generated: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`,
         );
-        return parsedResponse;
-      } catch (error) {
+      return parsedResponse;
+    } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const retryable = this.isTransientGeminiError(error);
 
@@ -87,9 +87,9 @@ export class GeminiService {
       }
     }
 
-    return {
-      text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
-    };
+      return {
+        text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
+      };
   }
 
   private buildPrompt(
