@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   Prisma,
@@ -14,7 +15,10 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '@core/prisma/prisma.service';
 import { EncryptionService } from '@core/encryption/encryption.service';
-import { TelegramService } from '@telegram/telegram.service';
+import {
+  TelegramService,
+  TELEGRAM_NETWORK_ERROR,
+} from '@telegram/telegram.service';
 import { PaginationDto, PaginatedResponseDto } from '@/shared/dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -32,6 +36,26 @@ export class PostsService {
     private readonly configService: ConfigService,
     private readonly activityLogService: ActivityLogService,
   ) {}
+
+  private handleTelegramError(response: any, actionDescription: string): never {
+    const errorCode = response?.error_code ?? response?.status;
+
+    if (response?.error_code === TELEGRAM_NETWORK_ERROR) {
+      throw new ServiceUnavailableException(
+        'Unable to reach Telegram API. Please try again later.',
+      );
+    }
+
+    if (errorCode === 403) {
+      throw new ForbiddenException(
+        'Bot is not a member of the channel. Please add the bot to the channel first.',
+      );
+    }
+
+    throw new ForbiddenException(
+      `${actionDescription}: ${response?.description || 'Unknown error'}`,
+    );
+  }
 
   private async getUserOrganizationId(userId: number): Promise<number> {
     const member = await this.prisma.member.findUnique({
@@ -376,14 +400,7 @@ export class PostsService {
       });
 
       if (!res.ok) {
-        if (res.error_code === 403) {
-          throw new ForbiddenException(
-            'Bot is not a member of the channel. Please add the bot to the channel first.',
-          );
-        }
-        throw new ForbiddenException(
-          `Failed to send media group to Telegram: ${res.description || 'Unknown error'}`,
-        );
+        this.handleTelegramError(res, 'Failed to send media group to Telegram');
       }
 
       const first = Array.isArray(res.result) ? res.result[0] : undefined;
@@ -398,14 +415,7 @@ export class PostsService {
       });
 
       if (!res.ok) {
-        if (res.error_code === 403) {
-          throw new ForbiddenException(
-            'Bot is not a member of the channel. Please add the bot to the channel first.',
-          );
-        }
-        throw new ForbiddenException(
-          `Failed to send photo to Telegram: ${res.description || 'Unknown error'}`,
-        );
+        this.handleTelegramError(res, 'Failed to send photo to Telegram');
       }
 
       telegramId = String(res.result?.message_id ?? res.message_id ?? '');
@@ -418,14 +428,7 @@ export class PostsService {
       });
 
       if (!res.ok) {
-        if (res.error_code === 403) {
-          throw new ForbiddenException(
-            'Bot is not a member of the channel. Please add the bot to the channel first.',
-          );
-        }
-        throw new ForbiddenException(
-          `Failed to send message to Telegram: ${res.description || 'Unknown error'}`,
-        );
+        this.handleTelegramError(res, 'Failed to send message to Telegram');
       }
 
       telegramId = String(res.result?.message_id ?? res.message_id ?? '');
@@ -478,16 +481,12 @@ export class PostsService {
         parse_mode: 'HTML',
       });
 
-      if (!res.ok) {
-        if (res.error_code === 403) {
-          throw new ForbiddenException(
-            'Bot is not a member of the channel. Please add the bot to the channel first.',
+        if (!res.ok) {
+          this.handleTelegramError(
+            res,
+            'Failed to edit message caption on Telegram',
           );
         }
-        throw new ForbiddenException(
-          `Failed to edit message caption: ${res.description || 'Unknown error'}`,
-        );
-      }
     } catch (error) {
       if (error instanceof ForbiddenException) {
         throw error;
@@ -503,13 +502,9 @@ export class PostsService {
         });
 
         if (!res.ok) {
-          if (res.error_code === 403) {
-            throw new ForbiddenException(
-              'Bot is not a member of the channel. Please add the bot to the channel first.',
-            );
-          }
-          throw new ForbiddenException(
-            `Failed to edit message text: ${res.description || 'Unknown error'}`,
+          this.handleTelegramError(
+            res,
+            'Failed to edit message text on Telegram',
           );
         }
       } catch (fallbackError) {

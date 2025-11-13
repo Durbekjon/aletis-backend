@@ -16,6 +16,7 @@ import { OnboardingProgressModule } from './onboarding-progress/onboarding-progr
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
+import { InstagramModule } from './instagram/instagram.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ActivityLogModule } from './activity-log/activity-log.module';
     DashboardModule,
     AnalyticsModule,
     ActivityLogModule,
+    InstagramModule,
   ],
 })
 export class ModulesModule {}

@@ -36,39 +36,60 @@ export class GeminiService {
     userOrders?: any[],
     lang?: string, // new
   ): Promise<AiResponse> {
-    try {
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-      });
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+    });
 
-      const prompt = this.buildPrompt(
-        userText,
-        conversationHistory,
-        productContext,
-        userOrders,
-        lang, // new
-      );
+    const prompt = this.buildPrompt(
+      userText,
+      conversationHistory,
+      productContext,
+      userOrders,
+      lang, // new
+    );
 
-      this.logger.log('Generating AI response...');
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        this.logger.log(
+          attempt === 1
+            ? 'Generating AI response...'
+            : `Generating AI response (attempt ${attempt}/${maxAttempts})...`,
+        );
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
 
-      // Parse the response for intents
-      const parsedResponse = await this.parseResponse(text);
+        const parsedResponse = await this.parseResponse(text);
 
-      this.logger.log(`AI response generated: ${text.substring(0, 100)}...`);
-      return parsedResponse;
-    } catch (error) {
-      this.logger.error(
-        `Error generating AI response: ${error.message}`,
-        error.stack,
-      );
-      // Fallback response
-      return {
-        text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
-      };
+        this.logger.log(
+          `AI response generated: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`,
+        );
+        return parsedResponse;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const retryable = this.isTransientGeminiError(error);
+
+        if (retryable && attempt < maxAttempts) {
+          const backoff = Math.min(2500, 500 * Math.pow(2, attempt - 1));
+          this.logger.warn(
+            `Gemini request failed (attempt ${attempt}/${maxAttempts}): ${message}. Retrying in ${backoff}ms...`,
+          );
+          await this.delay(backoff);
+          continue;
+        }
+
+        this.logger.error(`Error generating AI response: ${message}`);
+        if (error instanceof Error && error.stack) {
+          this.logger.debug(error.stack);
+        }
+        break;
+      }
     }
+
+    return {
+      text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
+    };
   }
 
   private buildPrompt(
@@ -777,6 +798,27 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
     return {
       text: aiText,
     };
+  }
+
+  private isTransientGeminiError(error: any): boolean {
+    if (!error) {
+      return false;
+    }
+
+    const status = (error as any)?.status ?? (error as any)?.code;
+    const message = (error as any)?.message ?? String(error);
+
+    if (status === 429 || status === 503) {
+      return true;
+    }
+
+    return /429|503|rate limit|temporarily unavailable|overloaded/i.test(
+      message,
+    );
+  }
+
+  private async delay(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

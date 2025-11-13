@@ -3,13 +3,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CustomersService } from '@/modules/customers/customers.service';
 import { FileService } from '@/modules/file/file.service';
+import { RetryService } from '@/core/retry/retry.service';
+
+export const TELEGRAM_NETWORK_ERROR = 'NETWORK_ERROR';
 @Injectable()
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
+  private readonly requestTimeoutMs = 8000;
+  private readonly maxAttempts = 3;
 
   constructor(
     private readonly customersService: CustomersService,
     private readonly fileService: FileService,
+    private readonly retryService: RetryService,
   ) {}
   async sendRequest(
     botToken: string,
@@ -17,36 +23,117 @@ export class TelegramService {
     payload: Record<string, any>,
   ): Promise<any> {
     const url = `https://api.telegram.org/bot${botToken}/${method}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    // Normalize response so callers can handle specific Telegram error codes
-    const rawText = await response.text();
-    let parsed: any | undefined;
-    try {
-      parsed = rawText ? JSON.parse(rawText) : undefined;
-    } catch {
-      // non-JSON response
-    }
-
-    const normalized: any = {
-      // ok should reflect HTTP ok AND Telegram ok when present
-      ok: response.ok && (parsed?.ok ?? true),
-      status: response.status,
-      ...(parsed ?? {}),
+    const summarizePayload = () => {
+      if (payload?.chat_id) {
+        return `{ chat_id: ${payload.chat_id}, method: ${method} }`;
+      }
+      if (payload?.callback_query_id) {
+        return `{ callback_query_id: ${payload.callback_query_id}, method: ${method} }`;
+      }
+      return `{ method: ${method} }`;
     };
 
-    if (!normalized.ok) {
-      // Ensure error_code/description are populated for consistent handling
-      if (!normalized.error_code) normalized.error_code = response.status;
-      if (!normalized.description)
-        normalized.description = rawText || 'Unknown error';
-    }
+    const performRequest = async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(),
+        this.requestTimeoutMs,
+      );
 
-    return normalized;
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        const rawText = await response.text();
+        let parsed: any | undefined;
+        try {
+          parsed = rawText ? JSON.parse(rawText) : undefined;
+        } catch {
+          // non-JSON response
+        }
+
+        const normalized: any = {
+          ok: response.ok && (parsed?.ok ?? true),
+          status: response.status,
+          ...(parsed ?? {}),
+        };
+
+        if (!normalized.ok) {
+          if (!normalized.error_code) {
+            normalized.error_code = parsed?.error_code ?? response.status;
+          }
+          if (!normalized.description) {
+            normalized.description =
+              parsed?.description ??
+              rawText ??
+              response.statusText ??
+              'Unknown error';
+          }
+        }
+
+        const shouldRetry =
+          (!normalized.ok &&
+            (normalized.error_code === 429 ||
+              normalized.status >= 500 ||
+              normalized.error_code >= 500)) ||
+          response.status >= 500;
+
+        if (shouldRetry) {
+          const retryError = new Error(
+            `Telegram API ${method} failed with ${normalized.error_code}: ${normalized.description}`,
+          );
+          (retryError as any).retryable = true;
+          throw retryError;
+        }
+
+        return normalized;
+      } catch (error) {
+        if ((error as any).name === 'AbortError') {
+          const timeoutError = new Error(
+            `Telegram API ${method} request timed out after ${this.requestTimeoutMs}ms`,
+          );
+          (timeoutError as any).retryable = true;
+          throw timeoutError;
+        }
+
+        if (error instanceof TypeError || (error as any).code === 'ETIMEDOUT') {
+          const networkError = new Error(
+            `Telegram API ${method} network failure: ${error.message}`,
+          );
+          (networkError as any).retryable = true;
+          throw networkError;
+        }
+
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    try {
+      return await this.retryService.executeWithRetry(performRequest, {
+        maxAttempts: this.maxAttempts,
+        baseDelay: 1000,
+        maxDelay: 4000,
+        backoffMultiplier: 2,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to reach Telegram API';
+      this.logger.error(
+        `[Telegram] Request ${method} failed after retries ${summarizePayload()}: ${message}`,
+      );
+      return {
+        ok: false,
+        status: 503,
+        error_code: TELEGRAM_NETWORK_ERROR,
+        description: message,
+      };
+    }
   }
 
   async handleStartCommand(chatId: string, botToken: string) {
