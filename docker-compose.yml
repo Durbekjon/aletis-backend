@@ -64,7 +64,6 @@ services:
     networks:
       - aletis-network
     deploy:
-      replicas: 2
       update_config:
         order: start-first
         parallelism: 1
@@ -83,4 +82,3 @@ volumes:
 networks:
   aletis-network:
     driver: bridge
-
