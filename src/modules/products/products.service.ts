@@ -405,8 +405,8 @@ export class ProductsService {
           data: {
             name: createProductDto.name,
             price: createProductDto.price,
-            quantity: createProductDto?.quantity || 0,
-            status: ProductStatus.DRAFT,
+            quantity: createProductDto.quantity,
+            status: createProductDto.status,
             currency: createProductDto.currency,
             schemaId: schema.id,
             organizationId,

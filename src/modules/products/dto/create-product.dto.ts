@@ -73,7 +73,7 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   @Max(1_000_000_000)
-  quantity?: number;
+  quantity: number = 0;
 
   @ApiProperty({
     description: 'The currency of the product',
