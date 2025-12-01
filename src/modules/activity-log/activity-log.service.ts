@@ -11,6 +11,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 type LanguageCode = 'en' | 'uz' | 'ru';
 import { PaginatedResponseDto } from '@/shared/dto';
@@ -20,6 +21,8 @@ import { RedisService } from '@/core/redis/redis.service';
 
 @Injectable()
 export class ActivityLogService {
+  private readonly logger = new Logger(ActivityLogService.name);
+
   private readonly CACHE_KEYS = {
     LIST: (
       orgId: number,
@@ -85,12 +88,18 @@ export class ActivityLogService {
       },
     });
 
-    // Invalidate cached lists for this organization
-    const keys = await this.redis.keys(
-      this.CACHE_KEYS.LIST_PREFIX(organizationId),
-    );
-    if (keys.length) {
-      await this.redis.delMultiple(keys);
+    // Invalidate cached lists for this organization (best-effort)
+    try {
+      const keys = await this.redis.keys(
+        this.CACHE_KEYS.LIST_PREFIX(organizationId),
+      );
+      if (keys.length) {
+        await this.redis.delMultiple(keys);
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to invalidate activity log cache for org ${organizationId}: ${error.message}`,
+      );
     }
 
     return created;
@@ -123,12 +132,19 @@ export class ActivityLogService {
       to ? new Date(to).toISOString() : undefined,
     );
 
-    const cached =
-      await this.redis.get<PaginatedResponseDto<ActivityLogResponseDto>>(
-        cacheKey,
+    // Try cache first (best-effort, ignore Redis failures)
+    try {
+      const cached =
+        await this.redis.get<PaginatedResponseDto<ActivityLogResponseDto>>(
+          cacheKey,
+        );
+      if (cached) {
+        return cached;
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `Activity log cache get failed for key ${cacheKey}: ${error.message}`,
       );
-    if (cached) {
-      return cached;
     }
     const where: Prisma.ActivityLogWhereInput = {
       organizationId: organization.id,
@@ -183,7 +199,16 @@ export class ActivityLogService {
       page,
       limit,
     );
-    await this.redis.set(cacheKey, result, this.TTL.LIST);
+
+    // Save to cache (best-effort, ignore Redis failures)
+    try {
+      await this.redis.set(cacheKey, result, this.TTL.LIST);
+    } catch (error: any) {
+      this.logger.warn(
+        `Activity log cache set failed for key ${cacheKey}: ${error.message}`,
+      );
+    }
+
     return result;
   }
 
