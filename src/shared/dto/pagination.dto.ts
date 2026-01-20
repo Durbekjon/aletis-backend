@@ -43,7 +43,7 @@ export class PaginationDto {
   })
   @IsOptional()
   @IsString()
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }: { value: any }) => value?.trim())
   search?: string;
 
   @ApiPropertyOptional({
