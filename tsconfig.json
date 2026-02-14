@@ -23,7 +23,7 @@
       "@channels/*": ["./src/modules/channels/*"],
       "@products/*": ["./src/modules/products/*"],
       "@bots/*": ["./src/modules/bots/*"],
-      "@schema/*": ["./src/modules/schema/*"],
+      "@schema/*": ["src/modules/product-schema/*"],
       "@file/*": ["./src/modules/file/*"],
       "@core/*": ["./src/core/*"],
       "@prisma/*": ["./src/core/prisma/*"],
