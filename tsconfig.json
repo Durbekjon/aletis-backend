@@ -25,6 +25,7 @@
       "@bots/*": ["./src/modules/bots/*"],
       "@schema/*": ["src/modules/product-schema/*"],
       "@file/*": ["./src/modules/file/*"],
+      "@embading/*": ["./src/modules/embading/*"],
       "@core/*": ["./src/core/*"],
       "@prisma/*": ["./src/core/prisma/*"],
       "@webhook/*": ["./src/modules/webhook/*"],

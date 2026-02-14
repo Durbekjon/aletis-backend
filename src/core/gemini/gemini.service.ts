@@ -11,6 +11,7 @@ export interface AiResponse {
   shouldFetchOrders?: boolean;
   images?: string[];
   missingInfo?: string[];
+  searchQuery?: string;
 }
 
 @Injectable()
@@ -36,17 +37,17 @@ export class GeminiService {
     userOrders?: any[],
     lang?: string, // new
   ): Promise<AiResponse> {
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-      });
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+    });
 
-      const prompt = this.buildPrompt(
-        userText,
-        conversationHistory,
-        productContext,
-        userOrders,
-        lang, // new
-      );
+    const prompt = this.buildPrompt(
+      userText,
+      conversationHistory,
+      productContext,
+      userOrders,
+      lang, // new
+    );
 
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -56,17 +57,17 @@ export class GeminiService {
             ? 'Generating AI response...'
             : `Generating AI response (attempt ${attempt}/${maxAttempts})...`,
         );
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
 
-      const parsedResponse = await this.parseResponse(text);
+        const parsedResponse = await this.parseResponse(text);
 
         this.logger.log(
           `AI response generated: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`,
         );
-      return parsedResponse;
-    } catch (error) {
+        return parsedResponse;
+      } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const retryable = this.isTransientGeminiError(error);
 
@@ -87,9 +88,9 @@ export class GeminiService {
       }
     }
 
-      return {
-        text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
-      };
+    return {
+      text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
+    };
   }
 
   private buildPrompt(
@@ -107,7 +108,8 @@ export class GeminiService {
       .join('\n');
 
     const productInfo =
-      productContext || 'No products are currently available in inventory.';
+      productContext ||
+      'Product catalog is available via search. You do NOT have the full product list loaded. You MUST use [INTENT:SEARCH_PRODUCT] to find products.';
     const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
 
     let langInstruction = '';
@@ -132,6 +134,7 @@ CRITICAL BUSINESS RULES:
 5. Only sell products that are actually in stock
 6. Be honest about availability - don't promise what you don't have
 7. Use relevant emojis (such as 💵, 💳, 📦, 🛒, 📱) to highlight money, payment, or product details where appropriate, but keep them minimal and natural.
+8. UNKNOWN PRODUCTS: You do not know what products are in stock until you search. If a user asks for a product, ALWAYS use [INTENT:SEARCH_PRODUCT]. Do NOT say "we don't have it" without searching first.
 
 LANGUAGE DETECTION RULES:
 - Detect the language of the customer's message automatically
@@ -199,22 +202,19 @@ EXAMPLE RESPONSES:
 - "Great choice! I just need your contact information to complete the order."
 - "Excellent! I've got that down. What's your phone number so we can reach you?"
 
-CURRENT INVENTORY:
+CURRENT INVENTORY STATUS:
 ${productInfo}
 
-IMPORTANT: When customers want to order products, use the exact Product ID (numeric) from the inventory list above, NOT the product name. For example, if a product shows "Product ID: 123 | Name: {productName1}", use productId: 123, not "{productName1}".
-
-INVENTORY ANALYSIS:
-- Carefully review the inventory list above
-- If customer mentions a product that's NOT in the inventory, inform them it's not available
-- Only create order items for products that actually exist in the inventory
-- If customer asks for multiple products but only some are available, create items only for available products
-
-CURRENT INVENTORY CHECK:
-- Product ID: 1 = {productName1} (price: {productPrice1} {productCurrency1})
-- Product ID: 2 = {productName2} (price: {productPrice2} {productCurrency2})
-- When customer says "{productName1} va {productName2}" or "{productName2} va {productName1}", you MUST include BOTH products
-- NEVER create an order with only one product when customer mentions multiple products
+INVENTORY RULES:
+1. If the inventory above lists specific products with IDs, you may use them directly.
+2. If the inventory says "Product catalog is available via search", you MUST SEARCH first.
+3. PRE-SEARCH BEHAVIOR:
+   - If user asks "Do you have X?", use [INTENT:SEARCH_PRODUCT] {"searchQuery": "X"}.
+   - Do NOT say "We don't have X" unless you have already searched and found nothing.
+   - Do NOT make up products.
+4. POST-SEARCH BEHAVIOR (when you have search results in context):
+   - Use the product details provided in the search results.
+   - Quote exact prices and IDs from the search results.
 
 ${
   userOrders && userOrders.length > 0
@@ -228,15 +228,7 @@ PRODUCT IMAGE RULES:
 - Product data may include image keys like "public/uploads/filename.jpg"
 - When you need to return image URLs, construct absolute URLs by prefixing with the base URL if they are relative
 
-PRODUCT ANSWER FORMAT (for product inquiries ONLY):
-- Detect language automatically and respond in that language
-- Return STRICT JSON (no markdown), with shape:
-{
-  "text": "Your reply in customer's language",
-  "images": ["https://.../public/uploads/one.jpg", "https://.../public/uploads/two.jpg"]
-}
-- If no images are available, return only the "text" field
-- Do NOT use markdown image syntax; only clean URLs
+
 
 ORDER CREATION PROCESS:
 When a customer wants to place an order, follow these steps:
@@ -250,12 +242,12 @@ When a customer wants to place an order, follow these steps:
   "customerContact": "phone/email if provided or 'Not provided'", 
   "items": [
     {
-      "productId": "MUST be the exact numeric product ID from inventory (integer, not product name)",
+      "productId": "MUST be the exact numeric product ID from inventory OR search results (integer, not product name)",
       "quantity": "number of items (integer)",
-      "price": "price per unit from inventory (number)"
+      "price": "price per unit from inventory OR search results (number)"
     },
     {
-      "productId": "MUST be the exact numeric product ID from inventory (integer, not product name)",
+      "productId": "MUST be the exact numeric product ID from inventory OR search results (integer, not product name)",
       "quantity": "number of items (integer)",
       "price": "price per unit from inventory (number)"
     }
@@ -356,6 +348,17 @@ MANDATORY JSON COMPLETION RULES:
   "missingInfo": ["contact", "location", "payment", "products"],
   "message": "polite message asking for missing information"
 }
+
+5. When customer asks about a product (e.g., 'Do you have red dress?', 'Show me shoes', 'I need something for summer'), use:
+[INTENT:SEARCH_PRODUCT]
+{
+  "searchQuery": "extracted search terms (e.g., 'red dress', 'summer shoes')"
+}
+
+EXAMPLES OF SEARCH_PRODUCT:
+- Customer: "Do you have any red dresses?" -> [INTENT:SEARCH_PRODUCT] { "searchQuery": "red dress" }
+- Customer: "Show me sneakers" -> [INTENT:SEARCH_PRODUCT] { "searchQuery": "sneakers" }
+- Customer: "I need a gift for my wife" -> [INTENT:SEARCH_PRODUCT] { "searchQuery": "gift for wife" }
 
 EXAMPLES OF ASK_FOR_INFO:
 - Customer: "{productName} sotib olaman" (no contact/location/payment) → Ask for missing info
@@ -791,6 +794,33 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
       } catch (error) {
         this.logger.warn(
           'Failed to parse order confirmation data from AI response',
+        );
+      }
+    }
+
+    // Look for search product intent marker
+    const searchProductMatch = aiText.match(
+      /\[INTENT:SEARCH_PRODUCT\]\s*(\{[\s\S]*?\})/,
+    );
+    if (searchProductMatch) {
+      try {
+        const searchData = JSON.parse(searchProductMatch[1]);
+        const responseText = aiText
+          .replace(/\[INTENT:SEARCH_PRODUCT\][\s\S]*/, '')
+          .trim();
+
+        this.logger.log(
+          `SEARCH_PRODUCT intent detected: ${JSON.stringify(searchData)}`,
+        );
+
+        return {
+          text: responseText || 'Let me search for that product.',
+          intent: 'SEARCH_PRODUCT',
+          searchQuery: searchData.searchQuery,
+        };
+      } catch (error) {
+        this.logger.warn(
+          'Failed to parse search product data from AI response',
         );
       }
     }

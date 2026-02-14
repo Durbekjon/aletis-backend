@@ -51,6 +51,24 @@ export class TelegramChatDto {
   last_name?: string;
 }
 
+export class TelegramPhotoSizeDto {
+  @IsString()
+  file_id!: string;
+
+  @IsString()
+  file_unique_id!: string;
+
+  @IsNumber()
+  width!: number;
+
+  @IsNumber()
+  height!: number;
+
+  @IsOptional()
+  @IsNumber()
+  file_size?: number;
+}
+
 export class TelegramMessageDto {
   @IsNumber()
   message_id!: number;
@@ -69,6 +87,15 @@ export class TelegramMessageDto {
   @IsOptional()
   @IsString()
   text?: string;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => TelegramPhotoSizeDto)
+  photo?: TelegramPhotoSizeDto[];
+
+  @IsOptional()
+  @IsString()
+  caption?: string;
 }
 
 export class TelegramWebhookDto {

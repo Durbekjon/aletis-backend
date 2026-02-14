@@ -5,8 +5,9 @@ import { PrismaModule } from '@/core/prisma/prisma.module';
 import { RedisModule } from '@/core/redis/redis.module';
 import { FileDeleteModule } from '@/core/file-delete/file-delete.module';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
+import { EmbadingModule } from '../embading/embading.module';
 @Module({
-  imports: [PrismaModule, RedisModule, FileDeleteModule, ActivityLogModule],
+  imports: [PrismaModule, RedisModule, FileDeleteModule, ActivityLogModule, EmbadingModule],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],

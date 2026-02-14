@@ -10,6 +10,7 @@ import { MessageBufferModule } from './message-buffer/message-buffer.module';
 import { RedisModule } from './redis/redis.module';
 import { FileDeleteModule } from './file-delete/file-delete.module';
 import { TelegramLoggerModule } from './telegram-logger/telegram-logger.module';
+import { ImageToBase64Module } from './image-to-base64/image-to-base64.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { TelegramLoggerModule } from './telegram-logger/telegram-logger.module';
     RedisModule,
     FileDeleteModule,
     TelegramLoggerModule,
+    ImageToBase64Module,
   ],
   providers: [EncryptionService, GeminiService, RetryService],
   exports: [
@@ -29,6 +31,7 @@ import { TelegramLoggerModule } from './telegram-logger/telegram-logger.module';
     GeminiService,
     RetryService,
     MessageBufferModule,
+    ImageToBase64Module,
   ],
 })
 export class CoreModule {}

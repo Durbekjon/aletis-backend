@@ -21,4 +21,4 @@ import { join } from 'path';
     CoreModule,
   ],
 })
-export class IndexModule {}
+export class AppModule {}

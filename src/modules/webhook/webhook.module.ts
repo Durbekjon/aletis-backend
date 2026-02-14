@@ -9,6 +9,7 @@ import { MessagesModule } from '@modules/messages/messages.module';
 import { ProductsModule } from '@modules/products/products.module';
 import { TelegramModule } from '@modules/telegram/telegram.module';
 import { OrdersModule } from '@modules/orders/orders.module';
+import { EmbadingModule } from '@modules/embading/embading.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { OrdersModule } from '@modules/orders/orders.module';
     ProductsModule,
     TelegramModule,
     OrdersModule,
+    EmbadingModule,
   ],
   controllers: [WebhookController],
   providers: [WebhookService, AiResponseHandlerService],

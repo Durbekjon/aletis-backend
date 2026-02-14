@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { IndexModule } from './index.module';
+import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter';
@@ -7,35 +7,16 @@ import { TelegramLoggerService } from './core/telegram-logger/telegram-logger.se
 import helmet from 'helmet';
 
 async function bootstrap() {
-  const app = await NestFactory.create(IndexModule, {
+  const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log'],
   });
 
-  // Security middleware
   app.use(helmet());
-
-  // Request ID middleware
-  // app.use((req: any, res: any, next: any) => {
-  //   const requestId = req.headers['x-request-id'] || require('uuid').v4();
-  //   req.requestId = requestId;
-  //   res.setHeader('x-request-id', requestId);
-  //   next();
-  // });
-
-  // CORS configuration
-  // const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((s) =>
-  //   s.trim(),
-  // ) || ['http://localhost:3000', 'https://aletis.kydanza.me'];
-
   app.enableCors({
     origin: '*',
   });
-
-  // Global exception filter (with dependency injection)
   const telegramLogger = app.get(TelegramLoggerService);
   app.useGlobalFilters(new GlobalExceptionFilter(telegramLogger));
-
-  // Global pipes
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -52,7 +33,6 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix('api');
-  // Swagger (OpenAPI) setup
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Aletis API')
     .setDescription('REST API documentation for Aletis backend')

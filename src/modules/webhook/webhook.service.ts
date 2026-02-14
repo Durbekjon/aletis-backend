@@ -16,6 +16,7 @@ import {
   FlushResult,
 } from '@core/message-buffer/message-buffer.service';
 import { PrismaService } from '@core/prisma/prisma.service';
+import { EmbadingService } from '@modules/embading/embading.service';
 
 @Injectable()
 export class WebhookService {
@@ -35,6 +36,7 @@ export class WebhookService {
     private readonly aiResponseHandler: AiResponseHandlerService,
     private readonly messageBufferService: MessageBufferService,
     private readonly prisma: PrismaService,
+    private readonly embadingService: EmbadingService,
   ) {}
 
   async handleWebhook(
@@ -166,7 +168,96 @@ export class WebhookService {
     }
 
     // Get message content
-    const messageContent = webhookData.message?.text || '';
+    const messageContent =
+      webhookData.message?.text || webhookData.message?.caption || '';
+    const photos = webhookData.message?.photo;
+
+    if (photos && photos.length > 0) {
+      this.logger.log(
+        `Image received from customer ${customer.id}, processing image search...`,
+      );
+      try {
+        // Get largest photo
+        const largestPhoto = photos[photos.length - 1];
+        const fileId = largestPhoto.file_id;
+
+        // Download file
+        const fileData = await this.telegramService.downloadFile(
+          decyptedToken,
+          fileId,
+        );
+
+        if (fileData) {
+          const base64Image = fileData.buffer.toString('base64');
+          let searchResults: any[] = [];
+
+          if (messageContent) {
+            // Hybrid search if caption exists
+            this.logger.log(
+              `Performing hybrid search for customer ${customer.id}`,
+            );
+            // We need to adapt hybridSearch to accept base64 or add a new method.
+            // For now, let's use searchByImage provided by EmbadingService which accepts filename.
+            // Wait, EmbadingService.searchByImage expects a filename to read from disk.
+            // We need to update EmbadingService to accept base64 string directly.
+            // Let's assume we will update EmbadingService to have searchByImageBase64(base64)
+            // For now, I will use a hypothetical searchByImageBase64 method and then update EmbadingService.
+            searchResults = await this.embadingService.searchByImageBase64(
+              base64Image,
+              5,
+            );
+          } else {
+            // Image-only search
+            this.logger.log(
+              `Performing image-only search for customer ${customer.id}`,
+            );
+            searchResults = await this.embadingService.searchByImageBase64(
+              base64Image,
+              5,
+            );
+          }
+
+          // Format results similar to handleSearchProductIntent
+          if (searchResults.length > 0) {
+            const responseText =
+              await this.aiResponseHandler.formatProductSearchResults(
+                searchResults,
+                customer.lang || 'uz',
+              );
+            await this.telegramService.sendRequest(
+              decyptedToken,
+              'sendMessage',
+              {
+                chat_id: customer.telegramId,
+                text: responseText,
+                parse_mode: 'HTML',
+              },
+            );
+            return { status: 'ok' };
+          } else {
+            await this.telegramService.sendRequest(
+              decyptedToken,
+              'sendMessage',
+              {
+                chat_id: customer.telegramId,
+                text:
+                  customer.lang === 'ru'
+                    ? 'По вашему запросу ничего не найдено.'
+                    : customer.lang === 'en'
+                      ? 'No products found matching your image.'
+                      : "Rasm bo'yicha hech qanday mahsulot topilmadi.",
+              },
+            );
+            return { status: 'ok' };
+          }
+        }
+      } catch (error) {
+        this.logger.error(
+          `Error processing image search: ${error.message}`,
+          error.stack,
+        );
+      }
+    }
 
     if (messageContent === '/start') {
       // Send onboarding language select
@@ -324,13 +415,13 @@ export class WebhookService {
       }
     }
 
-      // Save individual message to database
-      await this.messagesService._saveMessage(
-        customer.id,
-        messageContent,
-        'USER',
-        bot.id,
-      );
+    // Save individual message to database
+    await this.messagesService._saveMessage(
+      customer.id,
+      messageContent,
+      'USER',
+      bot.id,
+    );
 
     this.logger.log(
       `Message received from customer ${customer.id}: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? '...' : ''}"`,
@@ -689,20 +780,16 @@ export class WebhookService {
       bot.organizationId,
       customer.id,
     );
-    const productContext = await this.productsService._getProductsForAI(
-      bot.organizationId,
-    );
-
-    this.logger.log(`Product context: ${productContext}`);
-
     // Use customer.lang if set to force language; fallback is existing prompt logic (auto-detect)
     const aiResponse = await this.geminiService.generateResponse(
       message,
       history,
-      productContext,
+      undefined, // No product context, rely on search intent
       userOrders,
       customer.lang || undefined, // new param
     );
+
+    console.log({aiResponse});
 
     return aiResponse;
   }

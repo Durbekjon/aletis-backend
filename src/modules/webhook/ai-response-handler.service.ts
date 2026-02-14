@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OrdersService } from '@modules/orders/orders.service';
 import { AiResponse, GeminiService } from '@core/gemini/gemini.service';
 import { Customer, Order } from '@prisma/client';
+import { EmbadingService } from '@modules/embading/embading.service';
 
 export interface ProcessedAiResponse {
   text: string;
@@ -18,6 +19,7 @@ export class AiResponseHandlerService {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly geminiService: GeminiService,
+    private readonly embadingService: EmbadingService,
   ) {}
 
   /**
@@ -57,6 +59,14 @@ export class AiResponseHandlerService {
 
         case 'ASK_FOR_INFO':
           return await this.handleAskForInfoIntent(
+            aiResponse,
+            customer,
+            organizationId,
+            originalUserMessage,
+          );
+
+        case 'SEARCH_PRODUCT':
+          return await this.handleSearchProductIntent(
             aiResponse,
             customer,
             organizationId,
@@ -375,5 +385,113 @@ export class AiResponseHandlerService {
         aiResponse.text ||
         'I need some additional information to process your order.',
     };
+  }
+
+  /**
+   * Format product search results into a readable message
+   */
+  async formatProductSearchResults(
+    searchResults: any[],
+    language: string,
+  ): Promise<string> {
+    if (!searchResults || searchResults.length === 0) {
+      return language === 'uz'
+        ? "Kechirasiz, so'rovingiz bo'yicha hech narsa topilmadi."
+        : language === 'ru'
+          ? 'Извините, по вашему запросу ничего не найдено.'
+          : "I couldn't find any products matching your query.";
+    }
+
+    const isUzbek = language === 'uz';
+    const isRussian = language === 'ru';
+    // const isEnglish = language === 'en'; // Default
+
+    let titleText = 'Here is what I found:\n\n';
+    let footerText = 'Would you like to order any of these?';
+
+    if (isUzbek) {
+      titleText = `Mana topilgan mahsulotlar:\n\n`;
+      footerText = 'Birortasiga buyurtma beramizmi?';
+    } else if (isRussian) {
+      titleText = `Вот что я нашел:\n\n`;
+      footerText = 'Хотите заказать что-нибудь из этого?';
+    }
+
+    let responseText = titleText;
+
+    searchResults.forEach((p) => {
+      // Handle both Weaviate object structure (properties in 'properties') and flat structure
+      const props = p.properties ? (p.properties as any) : p;
+
+      const price = props.price
+        ? `${props.price} ${props.currency || 'USD'}`
+        : 'Price not available';
+      const name = props.name || 'Unknown Product';
+      const description = props.description
+        ? props.description.substring(0, 100) + '...'
+        : '';
+
+      responseText += `🛍️ *${name}*\n💰 ${price}\n📝 ${description}\n\n`;
+    });
+
+    responseText += footerText;
+
+    return responseText;
+  }
+
+  /**
+   * Handle SEARCH_PRODUCT intent
+   */
+  private async handleSearchProductIntent(
+    aiResponse: AiResponse,
+    customer: Customer,
+    organizationId: number,
+    originalUserMessage?: string,
+  ): Promise<ProcessedAiResponse> {
+    const searchQuery = aiResponse.searchQuery;
+
+    if (!searchQuery) {
+      return {
+        text:
+          aiResponse.text ||
+          'I can help you find products. What are you looking for?',
+      };
+    }
+
+    try {
+      this.logger.log(`Searching for products with query: "${searchQuery}"`);
+
+      // Perform vector search using EmbadingService
+      const searchResults = await this.embadingService.searchByText(
+        searchQuery,
+        5,
+      );
+
+      this.logger.log(
+        `Found ${searchResults.length} products for query: "${searchQuery}"`,
+      );
+
+      // Determine language
+      const language = customer.lang || 'uz'; // Default to Uzbek or detect from message
+      // Note: We could use geminiService.detectLanguage(originalUserMessage) but customer.lang is safer if set.
+
+      const responseText = await this.formatProductSearchResults(
+        searchResults,
+        language,
+      );
+
+      return {
+        text: responseText,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to search products via AI: ${error.message}`,
+        error.stack,
+      );
+
+      return {
+        text: "I'm having trouble searching for products right now. Please try again later.",
+      };
+    }
   }
 }

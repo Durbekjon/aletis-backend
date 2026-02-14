@@ -4,10 +4,14 @@ import {
   BadRequestException,
   Logger,
   InternalServerErrorException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '@/core/prisma/prisma.service';
-import { FieldType, ProductStatus, ActionType, EntityType } from '@prisma/client';
+import {
+  FieldType,
+  ProductStatus,
+  ActionType,
+  EntityType,
+} from '@prisma/client';
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -20,6 +24,7 @@ import { PaginationDto } from '@shared/dto';
 import { RedisService } from '@core/redis/redis.service';
 import { FileDeleteService } from '@core/file-delete/file-delete.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { EmbadingService } from '@modules/embading/embading.service';
 
 @Injectable()
 export class ProductsService {
@@ -58,6 +63,7 @@ export class ProductsService {
     private readonly redis: RedisService,
     private readonly fileDeleteService: FileDeleteService,
     private readonly activityLogService: ActivityLogService,
+    private readonly embadingService: EmbadingService,
   ) {}
 
   // ==================== CACHE HELPER METHODS ====================
@@ -452,6 +458,10 @@ export class ProductsService {
         templateKey: 'PRODUCT_CREATED',
         data: { name: createProductDto.name },
       });
+
+      // Fetch full product details including images and dynamic fields
+      const fullProduct = await this.getProductById(result.product.id, userId);
+      await this.embadingService.createProductEmbedding(fullProduct);
 
       // Invalidate organization product caches since a new product was created
       await this.invalidateOrganizationProductCaches(organizationId);
@@ -1025,73 +1035,5 @@ export class ProductsService {
       );
       throw new InternalServerErrorException('Failed to delete products');
     }
-  }
-
-  async _getProductsForAI(organizationId: number): Promise<string> {
-    const products = await this.prisma.product.findMany({
-      where: { organizationId },
-      include: {
-        fields: {
-          include: {
-            field: true,
-          },
-        },
-        images: true,
-      },
-    });
-    this.logger.log(`Products for AI: ${JSON.stringify(products)}`);
-    return this.transformProductsToString(products);
-  }
-
-  private transformProductsToString(products: any) {
-    return products
-      .map((p: any) => {
-        const fieldsStr = (p.fields || [])
-          .map((f: any) => {
-            let value;
-            switch (f.field.type) {
-              case 'TEXT':
-                value = f.valueText;
-                break;
-              case 'NUMBER':
-                value = f.valueNumber;
-                break;
-              case 'BOOLEAN':
-                value = f.valueBool ? 'true' : 'false';
-                break;
-              case 'DATE':
-                value = f.valueDate
-                  ? f.valueDate.toISOString().split('T')[0]
-                  : null;
-                break;
-              case 'ENUM':
-                value = f.valueJson;
-                break;
-              case 'FILE':
-              case 'IMAGE':
-                value = f.valueJson?.fileName || f.valueJson?.url || 'file';
-                break;
-              default:
-                value =
-                  f.valueText ||
-                  f.valueNumber ||
-                  f.valueBool ||
-                  f.valueDate ||
-                  f.valueJson;
-            }
-            return `${f.field.name}: ${value}`;
-          })
-          .join(', ');
-
-        const imageKeys = Array.isArray(p.images)
-          ? p.images.map((img: any) => img.key).filter(Boolean)
-          : [];
-
-        const imagesStr =
-          imageKeys.length > 0 ? ` | Images: [${imageKeys.join(', ')}]` : '';
-
-        return `Product ID: ${p.id} | Name: ${p.name} | Price: ${p.price} ${p.currency || 'USD'} | Qty: ${p.quantity || 1} | Fields: {${fieldsStr}}${imagesStr}`;
-      })
-      .join('\n');
   }
 }
