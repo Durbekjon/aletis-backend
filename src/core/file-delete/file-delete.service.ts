@@ -1,48 +1,41 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as path from 'path';
-import * as fs from 'fs/promises';
+import { PrismaService } from '@/core/prisma/prisma.service';
+import { ImageKitService } from '@/core/imagekit/imagekit.service';
 
+/**
+ * Lightweight delete helper used by services that don't want to depend on the
+ * full FileModule (e.g. logo replacement in auth/organizations). Looks up the
+ * file row by its `key` (the absolute CDN URL), removes the remote asset, and
+ * deletes the DB row.
+ */
 @Injectable()
 export class FileDeleteService {
   private readonly logger = new Logger(FileDeleteService.name);
-  // Only allow deletes within this base directory
-  private readonly uploadsDir = path.resolve(__dirname, '@/public/uploads');
 
-  /**
-   * Deletes a single file, specified by its key (filename or relative path)
-   */
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly imageKit: ImageKitService,
+  ) {}
+
   async deleteFileByKey(key: string): Promise<void> {
-    const filePath = this.getSafeFilePath(key);
-    try {
-      await fs.unlink(filePath);
-      this.logger.log(`Deleted file: ${filePath}`);
-    } catch (error) {
-      // ENOENT = file not found: not a fatal error for delete
-      if (error.code !== 'ENOENT') {
-        this.logger.warn(`Failed to delete file: ${filePath}`, error);
-      }
+    const file = await this.prisma.file.findUnique({ where: { key } });
+    if (!file) {
+      this.logger.warn(`File with key ${key} not found; nothing to delete`);
+      return;
     }
+    if (file.externalId) {
+      await this.imageKit.delete(file.externalId).catch((err) => {
+        this.logger.warn(
+          `Remote delete failed for ${key}: ${err.message ?? err}`,
+        );
+      });
+    }
+    await this.prisma.file.delete({ where: { id: file.id } });
+    this.logger.log(`Deleted file by key: ${key}`);
   }
 
-  /**
-   * Deletes multiple files concurrently.
-   */
   async deleteFilesByKeys(keys: string[]): Promise<void> {
     if (!keys?.length) return;
-    // Concurrently delete files (with Promise.all)
     await Promise.all(keys.map((key) => this.deleteFileByKey(key)));
-  }
-
-  /**
-   * Prevents directory traversal attacks; returns only safe paths inside uploadsDir
-   */
-  private getSafeFilePath(key: string): string {
-    const sanitizedKey = path.basename(key); // Only allow filename, drop any dirs
-    const fullPath = path.join(this.uploadsDir, sanitizedKey);
-    // Extra security: ensure file is within uploadsDir
-    if (!fullPath.startsWith(this.uploadsDir)) {
-      throw new Error('Invalid file key/path');
-    }
-    return fullPath;
   }
 }
