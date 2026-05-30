@@ -10,7 +10,8 @@ export class TelegramLoggerService {
   private readonly skipInDevelopment: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    this.botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN') || null;
+    this.botToken =
+      this.configService.get<string>('TELEGRAM_BOT_TOKEN') || null;
     this.chatId = this.configService.get<string>('TELEGRAM_CHAT_ID') || null;
     this.skipInDevelopment =
       this.configService.get<string>('NODE_ENV') === 'development';
@@ -56,7 +57,9 @@ export class TelegramLoggerService {
    */
   async sendEvent(title: string, details?: string): Promise<void> {
     if (!this.shouldSend()) {
-      this.logger.log(`[Telegram Event] ${title}${details ? `\n${details}` : ''}`);
+      this.logger.log(
+        `[Telegram Event] ${title}${details ? `\n${details}` : ''}`,
+      );
       return;
     }
 
@@ -67,6 +70,7 @@ export class TelegramLoggerService {
 
     try {
       await this.sendTelegramMessage(message);
+      console.log(`[Telegram Event sent] ${title}${details ? `\n${details}` : ''}`);
     } catch (error) {
       this.logger.error(
         `Failed to send Telegram event: ${error.message}`,
@@ -87,8 +91,7 @@ export class TelegramLoggerService {
     context?: Record<string, any>,
   ): Promise<void> {
     if (!this.shouldSend()) {
-      const errorMessage =
-        error instanceof Error ? error.message : error;
+      const errorMessage = error instanceof Error ? error.message : error;
       this.logger.error(
         `[Telegram Error] ${errorMessage}`,
         error instanceof Error ? error.stack : undefined,
@@ -132,9 +135,9 @@ export class TelegramLoggerService {
     }
 
     // Skip in development if configured
-    if (this.skipInDevelopment) {
-      return false;
-    }
+    // if (this.skipInDevelopment) {
+    //   return false;
+    // }
 
     return true;
   }
@@ -143,8 +146,6 @@ export class TelegramLoggerService {
    * Sends message to Telegram Bot API
    */
   private async sendTelegramMessage(text: string): Promise<void> {
-    console.log('this.botToken', this.botToken);
-    console.log('this.chatId', this.chatId);
     if (!this.botToken || !this.chatId) {
       throw new Error('Telegram bot token or chat ID not configured');
     }
@@ -172,8 +173,9 @@ export class TelegramLoggerService {
 
     const data = await response.json();
     if (!data.ok) {
-      throw new Error(`Telegram API returned error: ${data.description || 'Unknown error'}`);
+      throw new Error(
+        `Telegram API returned error: ${data.description || 'Unknown error'}`,
+      );
     }
   }
 }
-

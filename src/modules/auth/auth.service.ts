@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import type { SignOptions } from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/core/prisma/prisma.service';
 import { FileDeleteService } from '@/core/file-delete/file-delete.service';
@@ -17,6 +18,13 @@ import crypto from 'node:crypto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { AuthResponse } from './dto/auth-response.dto';
 import { UpdateProfileDto } from './dto';
+import {
+  MemberRole,
+  MemberStatus,
+  OnboardingStatus,
+  OnboardingStep,
+  Prisma,
+} from '@prisma/client';
 
 type Tokens = { accessToken: string; refreshToken: string };
 @Injectable()
@@ -31,7 +39,7 @@ export class AuthService {
     private readonly telegramLogger: TelegramLoggerService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<Tokens> {
+  async register(dto: RegisterDto): Promise<AuthResponse> {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -39,31 +47,118 @@ export class AuthService {
       throw new ConflictException('Email already in use');
     }
 
-    const saltRounds = Number(
-      this.configService.get('BCRYPT_SALT_ROUNDS') ?? 10,
-    );
-    const passwordHash = await bcrypt.hash(dto.password, saltRounds);
+    const passwordHash = await this.hashValue(dto.password);
+    const orgName = this.defaultOrgName(dto.firstName, dto.orgName);
 
-    const user = await this.prisma.user.create({
-      data: {
-        firstName: dto.firstName ?? null,
-        lastName: dto.lastName ?? null,
-        email: dto.email,
-        password: passwordHash,
-      },
+    const { userId, org } = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          firstName: dto.firstName ?? null,
+          lastName: dto.lastName ?? null,
+          email: dto.email,
+          password: passwordHash,
+        },
+      });
+      const createdOrg = await this.createDefaultOrganization(
+        tx,
+        user.id,
+        orgName,
+      );
+      return { userId: user.id, org: createdOrg };
     });
-    const tokens = await this.issueTokens(user.id);
-    await this.updateUserRefreshTokenHash(user.id, tokens.refreshToken);
+
+    const tokens = await this.issueTokens(userId);
+    await this.updateUserRefreshTokenHash(userId, tokens.refreshToken);
 
     // Send Telegram notification about new user registration
     const totalCount = await this.prisma.user.count();
-    const userName = `${dto.firstName || ''} ${dto.lastName || ''}`.trim() || dto.email;
+    const userName =
+      `${dto.firstName || ''} ${dto.lastName || ''}`.trim() || dto.email;
     await this.telegramLogger.sendEvent(
       '🧍 New user registered',
       `Name: ${userName}\nEmail: ${dto.email}\nTotal users: ${totalCount}`,
     );
 
-    return tokens;
+    return this.buildAuthResponse(tokens, org);
+  }
+
+  private defaultOrgName(
+    firstName: string | null | undefined,
+    explicit: string | undefined,
+  ): string {
+    if (explicit && explicit.trim().length > 0) return explicit.trim();
+    if (firstName && firstName.trim().length > 0) {
+      return `${firstName.trim()}'s store`;
+    }
+    return 'My store';
+  }
+
+  private async createDefaultOrganization(
+    tx: Prisma.TransactionClient,
+    userId: number,
+    name: string,
+  ) {
+    const organization = await tx.organization.create({
+      data: {
+        name,
+        onboardingProgress: {
+          create: {
+            percentage: 0,
+            status: OnboardingStatus.INCOMPLETE,
+            nextStep: OnboardingStep.ADD_FIRST_PRODUCT,
+          },
+        },
+      },
+      include: { onboardingProgress: true },
+    });
+    await tx.member.create({
+      data: {
+        userId,
+        organizationId: organization.id,
+        role: MemberRole.ADMIN,
+        status: MemberStatus.ACTIVE,
+      },
+    });
+    return organization;
+  }
+
+  private buildAuthResponse(
+    tokens: Tokens,
+    org: {
+      id: number;
+      name: string;
+      onboardingProgress: {
+        id: number;
+        percentage: number;
+        isFirstProductAdded: boolean;
+        isBotConnected: boolean;
+        isChannelConnected: boolean;
+        nextStep: OnboardingStep;
+        status: OnboardingStatus;
+      } | null;
+    } | null,
+  ): AuthResponse {
+    return {
+      ...tokens,
+      hasOrganization: !!org,
+      ...(org && {
+        organization: {
+          id: org.id,
+          name: org.name,
+          onboardingProgress: org.onboardingProgress
+            ? {
+                id: org.onboardingProgress.id,
+                percentage: org.onboardingProgress.percentage,
+                isFirstProductAdded: org.onboardingProgress.isFirstProductAdded,
+                isBotConnected: org.onboardingProgress.isBotConnected,
+                isChannelConnected: org.onboardingProgress.isChannelConnected,
+                nextStep: org.onboardingProgress.nextStep,
+                status: org.onboardingProgress.status,
+              }
+            : null,
+        },
+      }),
+    };
   }
 
   async login(email: string, password: string): Promise<AuthResponse> {
@@ -100,10 +195,9 @@ export class AuthService {
             ? {
                 id: org.onboardingProgress.id,
                 percentage: org.onboardingProgress.percentage,
-                isCategorySelected: org.onboardingProgress.isCategorySelected,
-                isSchemaConfigured: org.onboardingProgress.isSchemaConfigured,
                 isFirstProductAdded: org.onboardingProgress.isFirstProductAdded,
                 isBotConnected: org.onboardingProgress.isBotConnected,
+                isChannelConnected: org.onboardingProgress.isChannelConnected,
                 nextStep: org.onboardingProgress.nextStep,
                 status: org.onboardingProgress.status,
               }
@@ -144,17 +238,15 @@ export class AuthService {
     });
   }
 
-  async forgotPassword(email: string): Promise<{ resetToken: string }> {
+  async forgotPassword(email: string): Promise<{ ok: true }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      // Do not reveal whether email exists; still return success-like response
-      return { resetToken: '' };
+      // Do not reveal whether the email exists.
+      return { ok: true };
     }
 
     const resetToken = crypto.randomUUID();
     const expiry = new Date(Date.now() + 60 * 60 * 1000);
-
-    // For higher security, store hash instead of raw token
     const resetTokenHash = await this.hashValue(resetToken);
 
     await this.prisma.user.update({
@@ -162,32 +254,51 @@ export class AuthService {
       data: { resetToken: resetTokenHash, resetTokenExpiry: expiry },
     });
 
-    // In production: send email containing resetToken
-    return { resetToken };
+    // TODO: dispatch reset email via mailer service.
+    // The raw token is only logged in non-production so devs can complete the flow.
+    if (this.configService.get<string>('NODE_ENV') !== 'production') {
+      this.logger.debug(
+        `Password reset link for ${email}: token=${resetToken}`,
+      );
+    }
+
+    return { ok: true };
   }
 
-  async handleGoogleLogin(payload: any): Promise<AuthResponse> {
+  async handleGoogleLogin(payload: {
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<AuthResponse> {
     if (!payload.email) {
       throw new UnauthorizedException('Google account has no email');
     }
-    const existing = await this.prisma.user.findUnique({
-      where: { email: payload.email },
-    });
-    let userId: number;
-    if (existing) {
-      userId = existing.id;
-    } else {
+
+    const userId = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.user.findUnique({
+        where: { email: payload.email! },
+        include: { member: true },
+      });
+      if (existing) {
+        return existing.id;
+      }
       const defaultPasswordHash = await this.hashValue(crypto.randomUUID());
-      const created = await this.prisma.user.create({
+      const created = await tx.user.create({
         data: {
-          email: payload.email,
+          email: payload.email!,
           firstName: payload.firstName ?? null,
           lastName: payload.lastName ?? null,
           password: defaultPasswordHash,
         },
       });
-      userId = created.id;
-    }
+      await this.createDefaultOrganization(
+        tx,
+        created.id,
+        this.defaultOrgName(payload.firstName, undefined),
+      );
+      return created.id;
+    });
+
     const tokens = await this.issueTokens(userId);
     await this.updateUserRefreshTokenHash(userId, tokens.refreshToken);
     const userWithOrg = await this.prisma.user.findUnique({
@@ -202,41 +313,24 @@ export class AuthService {
         },
       },
     });
-    const org = userWithOrg?.member?.organization;
-    return {
-      ...tokens,
-      hasOrganization: !!org,
-      ...(org && {
-        organization: {
-          id: org.id,
-          name: org.name,
-          onboardingProgress: org.onboardingProgress
-            ? {
-                id: org.onboardingProgress.id,
-                percentage: org.onboardingProgress.percentage,
-                isCategorySelected: org.onboardingProgress.isCategorySelected,
-                isSchemaConfigured: org.onboardingProgress.isSchemaConfigured,
-                isFirstProductAdded: org.onboardingProgress.isFirstProductAdded,
-                isBotConnected: org.onboardingProgress.isBotConnected,
-                nextStep: org.onboardingProgress.nextStep,
-                status: org.onboardingProgress.status,
-              }
-            : null,
-        },
-      }),
-    };
+    return this.buildAuthResponse(
+      tokens,
+      userWithOrg?.member?.organization ?? null,
+    );
   }
 
-  async resetPassword(token: string, newPassword: string): Promise<void> {
-    const user = await this.prisma.user.findFirst({
-      where: { resetToken: { not: null } },
-    });
-    if (!user || !user.resetToken || !user.resetTokenExpiry) {
-      throw new UnauthorizedException('Invalid or expired reset token');
-    }
-
-    const isExpired = user.resetTokenExpiry.getTime() < Date.now();
-    if (isExpired) {
+  async resetPassword(
+    email: string,
+    token: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (
+      !user ||
+      !user.resetToken ||
+      !user.resetTokenExpiry ||
+      user.resetTokenExpiry.getTime() < Date.now()
+    ) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
@@ -341,18 +435,18 @@ export class AuthService {
         await this.fileDeleteService.deleteFileByKey(oldLogoKey);
         // Delete the old logo file record from database
         if (user.logoId) {
-          await this.prisma.file.delete({
-            where: { id: user.logoId },
-          }).catch((error) => {
-            this.logger.warn(
-              `Failed to delete old logo file record: ${error.message}`,
-            );
-          });
+          await this.prisma.file
+            .delete({
+              where: { id: user.logoId },
+            })
+            .catch((error) => {
+              this.logger.warn(
+                `Failed to delete old logo file record: ${error.message}`,
+              );
+            });
         }
       } catch (error) {
-        this.logger.warn(
-          `Failed to delete old logo file: ${error.message}`,
-        );
+        this.logger.warn(`Failed to delete old logo file: ${error.message}`);
         // Don't throw error - logo update succeeded even if old file deletion failed
       }
     }
@@ -409,34 +503,33 @@ export class AuthService {
   }
 
   private getAccessSecret(): string {
-    return (
+    const secret =
       this.configService.get<string>('JWT_ACCESS_SECRET') ??
-      this.configService.get<string>('JWT_SECRET') ??
-      'dev-secret'
-    );
+      this.configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('JWT_ACCESS_SECRET or JWT_SECRET must be set');
+    }
+    return secret;
   }
 
   private getRefreshSecret(): string {
-    return (
+    const secret =
       this.configService.get<string>('JWT_REFRESH_SECRET') ??
-      this.configService.get<string>('JWT_SECRET') ??
-      'dev-secret'
-    );
+      this.configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('JWT_REFRESH_SECRET or JWT_SECRET must be set');
+    }
+    return secret;
   }
 
-  private getAccessExpiry(): number {
-    const FIFTEEN_MINUTES = 15 * 60 * 1000;
-    return Number(
-      this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-        FIFTEEN_MINUTES,
-    );
+  private getAccessExpiry(): SignOptions['expiresIn'] {
+    return (this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
+      '15m') as SignOptions['expiresIn'];
   }
 
-  private getRefreshExpiry(): number {
-    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-    return Number(
-      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? SEVEN_DAYS,
-    );
+  private getRefreshExpiry(): SignOptions['expiresIn'] {
+    return (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ??
+      '7d') as SignOptions['expiresIn'];
   }
 
   private getSaltRounds(): number {

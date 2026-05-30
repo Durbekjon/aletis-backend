@@ -1,9 +1,18 @@
-import { Controller, Get, Param, Query, ParseIntPipe } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Query,
+} from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@modules/auth/strategies/jwt.strategy';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -13,6 +22,7 @@ import { JwtAuthGuard } from '@guards/jwt-auth.guard';
 import { UseGuards } from '@nestjs/common';
 import { PaginationDto } from '@/shared/dto';
 import { CustomerPaginatedResponseDto } from './dto/customer-pagination.dto';
+import { SetCustomerLangDto } from './dto/set-customer-lang.dto';
 
 @ApiTags('Customers')
 @ApiBearerAuth('bearer')
@@ -77,12 +87,20 @@ export class CustomersController {
     return this.customersService.getCustomerDetails(Number(user.userId), id);
   }
 
-  @Get(':id/lang/:lang')
+  @Patch(':id/lang')
+  @ApiOperation({ summary: "Update a customer's preferred language" })
+  @ApiBody({ type: SetCustomerLangDto })
+  @ApiOkResponse({ description: 'Customer language updated' })
   async setCustomerLang(
+    @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
-    @Param('lang') lang: string,
+    @Body() body: SetCustomerLangDto,
   ) {
-    await this.customersService.setCustomerLang(id, lang);
+    await this.customersService.setCustomerLang(
+      Number(user.userId),
+      id,
+      body.lang,
+    );
     return { success: true };
   }
 }

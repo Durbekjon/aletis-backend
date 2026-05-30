@@ -17,10 +17,14 @@ import {
 } from '@core/message-buffer/message-buffer.service';
 import { PrismaService } from '@core/prisma/prisma.service';
 import { EmbadingService } from '@modules/embading/embading.service';
+import { RedisService } from '@core/redis/redis.service';
+import { CustomerSyncService } from './services/customer-sync.service';
+
+const DEDUP_TTL_SECONDS = 10 * 60; // Telegram retries within ~minutes; 10m is conservative.
+const DEDUP_KEY = (updateId: number) => `webhook:update:${updateId}`;
 
 @Injectable()
 export class WebhookService {
-  private readonly processedUpdates = new Set<number>();
   private readonly logger = new Logger(WebhookService.name);
 
   constructor(
@@ -37,6 +41,8 @@ export class WebhookService {
     private readonly messageBufferService: MessageBufferService,
     private readonly prisma: PrismaService,
     private readonly embadingService: EmbadingService,
+    private readonly redis: RedisService,
+    private readonly customerSync: CustomerSyncService,
   ) {}
 
   async handleWebhook(
@@ -300,9 +306,9 @@ export class WebhookService {
                 field: true,
               },
             },
-            schema: {
+            category: {
               select: {
-                name: true,
+                slug: true,
               },
             },
           },
@@ -328,15 +334,11 @@ export class WebhookService {
             else if (fv.valueDate)
               value = new Date(fv.valueDate).toLocaleDateString();
             else if (fv.valueJson) value = String(fv.valueJson);
-            return `<b>${fv.field.name}:</b> ${value}`;
+            return `<b>${fv.field.key}:</b> ${value}`;
           })
           .join('\n');
 
         // Build product message
-        const baseUrl =
-          this.configService.get<string>('PUBLIC_BASE_URL') ||
-          process.env.PUBLIC_BASE_URL ||
-          '';
         const productMessage =
           `<b>${product.name}</b>\n\n` +
           `<b>Narxi:</b> ${product.price} ${product.currency}\n` +
@@ -345,15 +347,14 @@ export class WebhookService {
           (fieldsText ? `\n${fieldsText}\n` : '') +
           `\n<a href="https://t.me/${bot.username}?start=order_${product.id}">📦 Buyurtma berish</a>`;
 
-        // Send product images if available
+        // Send product images if available. `File.key` is the absolute ImageKit URL.
         if (product.images && product.images.length > 0) {
           if (product.images.length > 1) {
             // Send media group
             const images = product.images.slice(0, 10).map((img, index) => {
-              const imageUrl = `${baseUrl}/${img.key}`.replace(/\\/g, '/');
               const mediaItem: any = {
                 type: 'photo',
-                media: imageUrl,
+                media: img.key,
               };
               if (index === 0) {
                 mediaItem.caption = productMessage;
@@ -374,7 +375,7 @@ export class WebhookService {
             // Send single photo
             await this.telegramService.sendRequest(decyptedToken, 'sendPhoto', {
               chat_id: customer.telegramId,
-              photo: `${baseUrl}/${product.images[0].key}`.replace(/\\/g, '/'),
+              photo: product.images[0].key,
               caption: productMessage,
               parse_mode: 'HTML',
             });
@@ -678,34 +679,6 @@ export class WebhookService {
       .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') // bold
       .replace(/_(.*?)_/g, '<i>$1</i>'); // italic
   }
-  private async getCustomerFromWebhook(
-    webhookData: WebhookDto,
-    botId: number,
-    organizationId: number,
-  ): Promise<Customer | null> {
-    const client = webhookData.message?.from;
-    if (!client) {
-      return null;
-    }
-    let customer = await this.customersService._getCustomerByTelegramId(
-      client.id.toString(),
-      organizationId,
-      botId,
-    );
-    if (!customer) {
-      let newCustomerName = client.first_name;
-      if (client.last_name) newCustomerName += ` ${client.last_name}`;
-      customer = await this.customersService.createCustomer({
-        telegramId: client.id.toString(),
-        organizationId,
-        botId,
-        name: newCustomerName,
-        username: client.username || null,
-      });
-    }
-    return customer;
-  }
-
   private async validateWebhook(
     webhookData: WebhookDto,
     botId: number,
@@ -715,13 +688,26 @@ export class WebhookService {
       return null;
     }
     if (!webhookData.callback_query) {
-      this.processedUpdates.add(webhookData.update_id);
+      const fresh = await this.redis.setNx(
+        DEDUP_KEY(webhookData.update_id),
+        '1',
+        DEDUP_TTL_SECONDS,
+      );
+      if (!fresh) {
+        this.logger.warn(
+          `Duplicate Telegram update_id ${webhookData.update_id} for bot ${botId}; skipping.`,
+        );
+        return null;
+      }
     }
 
     const [bot, customer] = await Promise.all([
       this.botService._getBot(botId, organizationId),
-      this.getCustomerFromWebhook(webhookData, botId, organizationId),
-      this.cleanUpProcessedUpdates(),
+      this.customerSync.findOrCreateFromUpdate(
+        webhookData,
+        botId,
+        organizationId,
+      ),
     ]);
     if (!bot) {
       throw new NotFoundException('Bot not found');
@@ -789,16 +775,9 @@ export class WebhookService {
       customer.lang || undefined, // new param
     );
 
-    console.log({aiResponse});
+    console.log({ aiResponse });
 
     return aiResponse;
   }
 
-  private async cleanUpProcessedUpdates() {
-    if (this.processedUpdates.size > 1000) {
-      const sortedIds = Array.from(this.processedUpdates).sort((a, b) => a - b);
-      const toDelete = sortedIds.slice(0, sortedIds.length - 1000);
-      toDelete.forEach((id) => this.processedUpdates.delete(id));
-    }
-  }
 }

@@ -9,16 +9,17 @@ export class FieldValueResponseDto {
   id: number;
 
   @ApiProperty({
-    description: 'The ID of the field',
+    description: 'The ID of the schema field',
     example: 1,
   })
   fieldId: number;
 
   @ApiProperty({
-    description: 'The name of the field',
-    example: 'Processor',
+    description:
+      'The stable machine key of the schema field (use this to look up the localized label in the category schema).',
+    example: 'brand',
   })
-  fieldName: string;
+  fieldKey: string;
 
   @ApiProperty({
     description: 'The type of the field',
@@ -122,16 +123,16 @@ export class ProductResponseDto {
   status: ProductStatus;
 
   @ApiProperty({
-    description: 'The ID of the schema this product belongs to',
-    example: 1,
+    description: 'The id of the leaf category this product belongs to.',
+    example: 42,
   })
-  schemaId: number;
+  categoryId: number;
 
   @ApiProperty({
-    description: 'The name of the schema',
-    example: 'Electronics Schema',
+    description: 'The slug of the leaf category.',
+    example: 'electronics/phones/smartphones',
   })
-  schemaName: string;
+  categorySlug: string;
 
   @ApiProperty({
     description: 'The ID of the organization',

@@ -29,6 +29,7 @@ export class WebhookHelperService {
     botToken: string,
     botId: number,
     organizationId: number,
+    secretToken?: string,
   ): Promise<webhookResponse> {
     const baseUrl = `https://api.telegram.org/bot${botToken}`;
     const webhookUrl = await this.getWebhookUrl(botId, organizationId);
@@ -36,10 +37,14 @@ export class WebhookHelperService {
 
     this.logger.log(`Setting webhook to: ${webhookUrl}`);
 
+    const body: Record<string, unknown> = { url: webhookUrl };
+    if (secretToken) {
+      body.secret_token = secretToken;
+    }
     const response = await fetch(setWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: webhookUrl }),
+      body: JSON.stringify(body),
     });
 
     const result = await response.json();

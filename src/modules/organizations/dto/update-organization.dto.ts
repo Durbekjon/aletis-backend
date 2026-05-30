@@ -1,6 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { BUSINESS_CATEGORY } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength, IsInt } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateOrganizationDto {
@@ -16,12 +15,11 @@ export class UpdateOrganizationDto {
   @MaxLength(500)
   description?: string | null;
 
-  @ApiPropertyOptional({ example: 'FASHION', nullable: true })
-  @IsEnum(BUSINESS_CATEGORY)
-  @IsOptional()
-  category?: BUSINESS_CATEGORY | null;
-
-  @ApiPropertyOptional({ example: 1, description: 'File ID of the organization logo', nullable: true })
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'File ID of the organization logo',
+    nullable: true,
+  })
   @IsInt()
   @IsOptional()
   @Type(() => Number)

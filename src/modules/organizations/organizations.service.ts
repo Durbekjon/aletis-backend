@@ -50,14 +50,11 @@ export class OrganizationsService {
         data: {
           name: dto.name,
           description: dto.description ?? null,
-          category: dto.category ?? undefined,
           onboardingProgress: {
             create: {
-              percentage: 20,
+              percentage: 0,
               status: OnboardingStatus.INCOMPLETE,
-              nextStep: dto.category
-                ? OnboardingStep.SELECT_CATEGORY
-                : OnboardingStep.CONFIGURE_SCHEMA,
+              nextStep: OnboardingStep.ADD_FIRST_PRODUCT,
             },
           },
         },
@@ -82,9 +79,9 @@ export class OrganizationsService {
     const organizations = await this.prisma.organization.findMany({
       where: { members: { some: { userId } } },
       orderBy: { createdAt: 'desc' },
-      include: { 
+      include: {
         logo: true,
-       },
+      },
     });
     if (!organizations || organizations.length !== 1) {
       throw new NotFoundException('Organization not found');
@@ -158,7 +155,6 @@ export class OrganizationsService {
       data: {
         name: dto.name ?? undefined,
         description: dto.description ?? undefined,
-        category: dto.category ?? undefined,
         logoId: dto.logoId ?? undefined,
       },
     });
@@ -169,18 +165,18 @@ export class OrganizationsService {
         await this.fileDeleteService.deleteFileByKey(oldLogoKey);
         // Delete the old logo file record from database
         if (organization.logoId) {
-          await this.prisma.file.delete({
-            where: { id: organization.logoId },
-          }).catch((error) => {
-            this.logger.warn(
-              `Failed to delete old logo file record: ${error.message}`,
-            );
-          });
+          await this.prisma.file
+            .delete({
+              where: { id: organization.logoId },
+            })
+            .catch((error) => {
+              this.logger.warn(
+                `Failed to delete old logo file record: ${error.message}`,
+              );
+            });
         }
       } catch (error) {
-        this.logger.warn(
-          `Failed to delete old logo file: ${error.message}`,
-        );
+        this.logger.warn(`Failed to delete old logo file: ${error.message}`);
         // Don't throw error - logo update succeeded even if old file deletion failed
       }
     }

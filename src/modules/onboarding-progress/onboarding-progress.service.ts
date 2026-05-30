@@ -12,122 +12,102 @@ import {
   OnboardingStepsResponseDto,
 } from './dto';
 
+const STEP_ORDER: OnboardingStep[] = [
+  OnboardingStep.ADD_FIRST_PRODUCT,
+  OnboardingStep.CONNECT_BOT,
+  OnboardingStep.CONNECT_CHANNEL,
+];
+
+const STEP_TO_FLAG: Record<
+  OnboardingStep,
+  keyof Pick<
+    OnboardingProgress,
+    'isFirstProductAdded' | 'isBotConnected' | 'isChannelConnected'
+  >
+> = {
+  [OnboardingStep.ADD_FIRST_PRODUCT]: 'isFirstProductAdded',
+  [OnboardingStep.CONNECT_BOT]: 'isBotConnected',
+  [OnboardingStep.CONNECT_CHANNEL]: 'isChannelConnected',
+};
+
 @Injectable()
 export class OnboardingProgressService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getCurrentStep(userId: number): Promise<CurrentStepResponseDto> {
-    const organization = await this.prisma.member.findUnique({
-      where: { userId, role: MemberRole.ADMIN },
-      select: { organizationId: true },
-    });
-    if (!organization)
-      throw new NotFoundException('User is not a member of any organization');
-    const onboardingProgress = await this.prisma.onboardingProgress.findUnique({
-      where: { organizationId: organization.organizationId },
-    });
-    if (!onboardingProgress)
-      throw new NotFoundException('Onboarding progress not found');
-    return { step: onboardingProgress.nextStep };
+    const progress = await this.loadProgress(userId);
+    return { step: progress.nextStep };
   }
 
   getOnboardingSteps(): OnboardingStepsResponseDto {
-    const steps = [
-      OnboardingStep.SELECT_CATEGORY,
-      OnboardingStep.CONFIGURE_SCHEMA,
-      OnboardingStep.ADD_FIRST_PRODUCT,
-      OnboardingStep.CONNECT_BOT,
-    ];
-    return { steps };
+    return { steps: [...STEP_ORDER] };
   }
 
   async getProgress(userId: number): Promise<OnboardingProgressResponseDto> {
-    const organization = await this.prisma.member.findUnique({
-      where: { userId, role: MemberRole.ADMIN },
-      select: { organizationId: true },
-    });
-    if (!organization)
-      throw new NotFoundException('User is not a member of any organization');
-    const onboardingProgress = await this.prisma.onboardingProgress.findUnique({
-      where: { organizationId: organization.organizationId },
-    });
-    if (!onboardingProgress)
-      throw new NotFoundException('Onboarding progress not found');
-    return onboardingProgress;
+    return this.loadProgress(userId);
   }
 
-  async getOnboardingProgress(userId: number): Promise<any> {
-    const organization = await this.prisma.member.findUnique({
-      where: { userId, role: MemberRole.ADMIN },
-      select: { organizationId: true },
+  async getOnboardingProgress(
+    userId: number,
+  ): Promise<OnboardingProgress | null> {
+    const organizationId = await this.requireOrganizationId(userId);
+    return this.prisma.onboardingProgress.findUnique({
+      where: { organizationId },
     });
-    if (!organization)
-      throw new NotFoundException('User is not a member of any organization');
-    const onboardingProgress = await this.prisma.onboardingProgress.findUnique({
-      where: { organizationId: organization.organizationId },
-    });
-    return onboardingProgress;
   }
 
   async handleNextStep(
     userId: number,
     step: OnboardingStep,
   ): Promise<OnboardingProgressResponseDto> {
-    const organization = await this.prisma.member.findUnique({
+    const organizationId = await this.requireOrganizationId(userId);
+    const flag = STEP_TO_FLAG[step];
+    const updated = await this.prisma.onboardingProgress.update({
+      where: { organizationId },
+      data: { [flag]: true },
+    });
+    return this.recompute(updated);
+  }
+
+  private async loadProgress(userId: number): Promise<OnboardingProgress> {
+    const organizationId = await this.requireOrganizationId(userId);
+    const progress = await this.prisma.onboardingProgress.findUnique({
+      where: { organizationId },
+    });
+    if (!progress) {
+      throw new NotFoundException('Onboarding progress not found');
+    }
+    return progress;
+  }
+
+  private async requireOrganizationId(userId: number): Promise<number> {
+    const membership = await this.prisma.member.findUnique({
       where: { userId, role: MemberRole.ADMIN },
       select: { organizationId: true },
     });
-    if (!organization)
+    if (!membership) {
       throw new NotFoundException('User is not a member of any organization');
-    const stepKey = this.getStepKey(step);
-    if (stepKey) {
-      await this.prisma.onboardingProgress.update({
-        where: { organizationId: organization.organizationId },
-        data: { [stepKey]: true },
-      });
     }
-    const percentage =
-      step === OnboardingStep.SELECT_CATEGORY
-        ? 40
-        : step === OnboardingStep.CONFIGURE_SCHEMA
-          ? 60
-          : step === OnboardingStep.ADD_FIRST_PRODUCT
-            ? 80
-            : step === OnboardingStep.CONNECT_BOT
-              ? 100
-              : 0;
-    let status: OnboardingStatus = OnboardingStatus.INCOMPLETE;
-    if (percentage === 100) status = OnboardingStatus.COMPLETED;
-    const nextStep = this.getNextStepKey(step)
+    return membership.organizationId;
+  }
+
+  private async recompute(
+    progress: OnboardingProgress,
+  ): Promise<OnboardingProgress> {
+    const flags = STEP_ORDER.map((step) => progress[STEP_TO_FLAG[step]]);
+    const completed = flags.filter(Boolean).length;
+    const percentage = Math.round((completed / STEP_ORDER.length) * 100);
+    const status =
+      completed === STEP_ORDER.length
+        ? OnboardingStatus.COMPLETED
+        : OnboardingStatus.INCOMPLETE;
+    const nextStep =
+      STEP_ORDER.find((step) => !progress[STEP_TO_FLAG[step]]) ??
+      STEP_ORDER[STEP_ORDER.length - 1];
+
     return this.prisma.onboardingProgress.update({
-      where: { organizationId: organization.organizationId },
-      data: { nextStep, percentage, status },
+      where: { id: progress.id },
+      data: { percentage, status, nextStep },
     });
-  }
-
-  private getStepKey(step: OnboardingStep): string | null {
-    switch (step) {
-      case OnboardingStep.SELECT_CATEGORY:
-        return 'isCategorySelected';
-      case OnboardingStep.CONFIGURE_SCHEMA:
-        return 'isSchemaConfigured';
-      case OnboardingStep.ADD_FIRST_PRODUCT:
-        return 'isFirstProductAdded';
-      case OnboardingStep.CONNECT_BOT:
-        return 'isBotConnected';
-      default:
-        return null;
-    }
-  }
-
-  private getNextStepKey(currentStep: OnboardingStep): OnboardingStep {
-    const { steps } = this.getOnboardingSteps();
-    let nextStepIndex = 0;
-    for (let i = 0; i < steps.length; i++) {
-      if (currentStep === steps[i]) {
-        nextStepIndex = i + 1;
-      }
-    }
-    return steps[nextStepIndex];
   }
 }

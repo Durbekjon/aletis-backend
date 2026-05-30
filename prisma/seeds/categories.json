@@ -1,0 +1,72 @@
+[
+  {
+    "slug": "electronics",
+    "name_en": "Electronics",
+    "name_ru": "Электроника",
+    "name_uz": "Elektronika",
+    "isLeaf": false,
+    "children": [
+      {
+        "slug": "electronics/phones",
+        "name_en": "Phones",
+        "name_ru": "Телефоны",
+        "name_uz": "Telefonlar",
+        "isLeaf": false,
+        "children": [
+          {
+            "slug": "electronics/phones/smartphones",
+            "name_en": "Smartphones",
+            "name_ru": "Смартфоны",
+            "name_uz": "Smartfonlar",
+            "isLeaf": true,
+            "schema": [
+              {
+                "key": "brand",
+                "label_en": "Brand",
+                "label_ru": "Бренд",
+                "label_uz": "Brend",
+                "type": "TEXT",
+                "required": true,
+                "order": 0
+              },
+              {
+                "key": "model",
+                "label_en": "Model",
+                "label_ru": "Модель",
+                "label_uz": "Model",
+                "type": "TEXT",
+                "required": true,
+                "order": 1
+              },
+              {
+                "key": "description",
+                "label_en": "Description",
+                "label_ru": "Описание",
+                "label_uz": "Tavsif",
+                "type": "TEXT",
+                "required": false,
+                "order": 2
+              },
+              {
+                "key": "color",
+                "label_en": "Color",
+                "label_ru": "Цвет",
+                "label_uz": "Rang",
+                "type": "ENUM",
+                "required": false,
+                "order": 3,
+                "options": {
+                  "values": [
+                    { "key": "black", "label_en": "Black", "label_ru": "Чёрный", "label_uz": "Qora" },
+                    { "key": "white", "label_en": "White", "label_ru": "Белый", "label_uz": "Oq" },
+                    { "key": "blue", "label_en": "Blue", "label_ru": "Синий", "label_uz": "Ko'k" }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

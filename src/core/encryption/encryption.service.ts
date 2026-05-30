@@ -1,28 +1,37 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 
 @Injectable()
-export class EncryptionService {
+export class EncryptionService implements OnModuleInit {
   private readonly algorithm = 'aes-256-gcm';
   private readonly keyLength = 32;
+  private key!: Buffer;
 
   constructor(private readonly configService: ConfigService) {}
 
-  private getKey(): Buffer {
+  onModuleInit(): void {
     const keyHex = this.configService.get<string>('ENCRYPTION_KEY');
-    if (!keyHex || keyHex.length !== this.keyLength * 2) {
+    const expectedHexLength = this.keyLength * 2;
+    if (!keyHex || keyHex.length !== expectedHexLength) {
       throw new Error(
-        `ENCRYPTION_KEY must be ${this.keyLength * 2} hex characters (${this.keyLength} bytes)`,
+        `ENCRYPTION_KEY must be ${expectedHexLength} hex characters (${this.keyLength} bytes)`,
       );
     }
-    return Buffer.from(keyHex, 'hex');
+    if (!/^[0-9a-fA-F]+$/.test(keyHex)) {
+      throw new Error('ENCRYPTION_KEY must be a valid hex string');
+    }
+    if (/^0+$/.test(keyHex)) {
+      throw new Error(
+        'ENCRYPTION_KEY is set to the example value (all zeros); generate one with `openssl rand -hex 32`',
+      );
+    }
+    this.key = Buffer.from(keyHex, 'hex');
   }
 
   encrypt(plaintext: string): string {
-    const key = this.getKey();
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(this.algorithm, key, iv);
+    const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
 
     let encrypted = cipher.update(plaintext, 'utf8', 'hex');
     encrypted += cipher.final('hex');
@@ -34,7 +43,6 @@ export class EncryptionService {
   }
 
   decrypt(encryptedData: string): string {
-    const key = this.getKey();
     const parts = encryptedData.split(':');
 
     if (parts.length !== 3) {
@@ -46,7 +54,7 @@ export class EncryptionService {
     const encrypted = Buffer.from(encryptedHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');
 
-    const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
+    const decipher = crypto.createDecipheriv(this.algorithm, this.key, iv);
     decipher.setAuthTag(authTag);
 
     let decrypted = decipher.update(encrypted, undefined, 'utf8');

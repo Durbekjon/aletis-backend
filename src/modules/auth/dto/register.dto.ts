@@ -33,4 +33,15 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password: string;
+
+  @ApiPropertyOptional({
+    maxLength: 120,
+    example: 'Acme Inc.',
+    description:
+      'Optional organization name created alongside the user. Defaults to "<firstName>\'s store" or "My store" when omitted.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  orgName?: string;
 }

@@ -4,14 +4,8 @@ class OnboardingProgressDto {
   @ApiProperty({ type: Number, example: 1 })
   id: number;
 
-  @ApiProperty({ type: Number, example: 80 })
+  @ApiProperty({ type: Number, example: 33 })
   percentage: number;
-
-  @ApiProperty({ type: Boolean, example: true })
-  isCategorySelected: boolean;
-
-  @ApiProperty({ type: Boolean, example: false })
-  isSchemaConfigured: boolean;
 
   @ApiProperty({ type: Boolean, example: false })
   isFirstProductAdded: boolean;
@@ -19,10 +13,13 @@ class OnboardingProgressDto {
   @ApiProperty({ type: Boolean, example: false })
   isBotConnected: boolean;
 
-  @ApiProperty({ type: String, example: 'select_category' })
+  @ApiProperty({ type: Boolean, example: false })
+  isChannelConnected: boolean;
+
+  @ApiProperty({ type: String, example: 'ADD_FIRST_PRODUCT' })
   nextStep: string;
 
-  @ApiProperty({ type: String, example: 'incomplete' })
+  @ApiProperty({ type: String, example: 'INCOMPLETE' })
   status: string;
 }
 

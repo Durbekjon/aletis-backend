@@ -1,5 +1,6 @@
 import { ImageToBase64Service } from '@core/image-to-base64/image-to-base64.service';
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import weaviate, {
   WeaviateClient,
   vectorizer,
@@ -8,40 +9,84 @@ import weaviate, {
 import { ProductResponseDto } from '@modules/products/dto/product-response.dto';
 import { v5 as uuidv5 } from 'uuid';
 
+const MAX_CONNECT_ATTEMPTS = 5;
+const INITIAL_BACKOFF_MS = 1000;
+
 @Injectable()
 export class EmbadingService implements OnModuleInit {
-  private client: WeaviateClient;
+  private client: WeaviateClient | null = null;
   private readonly logger = new Logger(EmbadingService.name);
   private readonly UUID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Standard OID namespace
 
-  constructor(private readonly imageToBase64Service: ImageToBase64Service) {}
+  constructor(
+    private readonly imageToBase64Service: ImageToBase64Service,
+    private readonly configService: ConfigService,
+  ) {}
 
   async onModuleInit() {
-    this.client = await weaviate.connectToLocal({
-      host: 'localhost',
-      port: 8080,
-      grpcPort: 50051,
-    });
-    // Check if client is ready
-    const ready = await this.client.isReady();
-    if (ready) {
-      this.logger.log('Weaviate client connected and ready');
-      await this._createProductCollection();
-    } else {
-      this.logger.error('Weaviate client failed to connect');
+    const host =
+      this.configService.get<string>('WEAVIATE_HOST') || '127.0.0.1';
+    const port =
+      this.configService.get<number>('WEAVIATE_PORT', { infer: true }) || 8080;
+    const grpcPort =
+      this.configService.get<number>('WEAVIATE_GRPC_PORT', { infer: true }) ||
+      50051;
+
+    for (let attempt = 1; attempt <= MAX_CONNECT_ATTEMPTS; attempt++) {
+      try {
+        this.client = await weaviate.connectToLocal({ host, port, grpcPort });
+        const ready = await this.client.isReady();
+        if (!ready) {
+          throw new Error('Weaviate reported not ready');
+        }
+        this.logger.log(
+          `Weaviate connected at ${host}:${port} (gRPC ${grpcPort})`,
+        );
+        await this._createProductCollection();
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const wait = INITIAL_BACKOFF_MS * 2 ** (attempt - 1);
+        this.logger.warn(
+          `Weaviate connection attempt ${attempt}/${MAX_CONNECT_ATTEMPTS} failed: ${message}. Retrying in ${wait}ms...`,
+        );
+        if (attempt === MAX_CONNECT_ATTEMPTS) {
+          this.client = null;
+          this.logger.error(
+            `Weaviate unavailable after ${MAX_CONNECT_ATTEMPTS} attempts; embedding features will be disabled.`,
+          );
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
     }
+  }
+
+  /**
+   * True if the Weaviate client is connected. Callers should bail or no-op when false.
+   */
+  isReady(): boolean {
+    return this.client !== null;
+  }
+
+  private requireClient(): WeaviateClient {
+    if (!this.client) {
+      throw new Error('Weaviate client is not connected');
+    }
+    return this.client;
   }
 
   private async _createProductCollection() {
     const productCollection = 'Product';
     const imageCollection = 'ProductImage';
+    const client = this.requireClient();
 
     try {
       // 1. Create Product Collection (Text only)
       const productExists =
-        await this.client.collections.exists(productCollection);
+        await client.collections.exists(productCollection);
       if (!productExists) {
-        await this.client.collections.create({
+        await client.collections.create({
           name: productCollection,
           vectorizers: vectorizer.multi2VecClip({
             textFields: ['name', 'description'],
@@ -62,9 +107,9 @@ export class EmbadingService implements OnModuleInit {
       }
 
       // 2. Create ProductImage Collection (Image only)
-      const imageExists = await this.client.collections.exists(imageCollection);
+      const imageExists = await client.collections.exists(imageCollection);
       if (!imageExists) {
-        await this.client.collections.create({
+        await client.collections.create({
           name: imageCollection,
           vectorizers: vectorizer.multi2VecClip({
             imageFields: ['image'],
@@ -87,15 +132,16 @@ export class EmbadingService implements OnModuleInit {
   }
 
   async createProductEmbedding(product: ProductResponseDto) {
-    const productCollection = this.client.collections.get('Product');
-    const imageCollection = this.client.collections.get('ProductImage');
+    const client = this.requireClient();
+    const productCollection = client.collections.get('Product');
+    const imageCollection = client.collections.get('ProductImage');
 
     // Generate deterministic UUID for the product
     const productUuid = uuidv5(product.id.toString(), this.UUID_NAMESPACE);
 
     // Extract description from fields if available
     const descriptionField = product.fields.find(
-      (f) => f.fieldName.toLowerCase() === 'description',
+      (f) => f.fieldKey.toLowerCase() === 'description',
     );
     const description = descriptionField?.valueText || '';
 
@@ -137,7 +183,7 @@ export class EmbadingService implements OnModuleInit {
   }
 
   async searchByText(query: string, limit = 10) {
-    const collection = this.client.collections.get('Product');
+    const collection = this.requireClient().collections.get('Product');
     const result = await collection.query.nearText(query, {
       limit: limit,
       returnProperties: [
@@ -157,7 +203,7 @@ export class EmbadingService implements OnModuleInit {
   }
 
   async searchByImageBase64(base64: string, limit = 10) {
-    const collection = this.client.collections.get('ProductImage');
+    const collection = this.requireClient().collections.get('ProductImage');
 
     // Search for images similar to the input image
     const result = await collection.query.nearImage(base64, {
@@ -228,7 +274,7 @@ export class EmbadingService implements OnModuleInit {
 
     // Scenario 1: Text-only - Search Product collection
     if (queryText && !queryImageFilename) {
-      const collection = this.client.collections.get('Product');
+      const collection = this.requireClient().collections.get('Product');
       const result = await collection.query.hybrid(queryText, {
         limit,
         alpha,

@@ -92,7 +92,7 @@ export class TelegramService {
 
         return normalized;
       } catch (error) {
-        if ((error as any).name === 'AbortError') {
+        if (error.name === 'AbortError') {
           const timeoutError = new Error(
             `Telegram API ${method} request timed out after ${this.requestTimeoutMs}ms`,
           );
@@ -100,7 +100,7 @@ export class TelegramService {
           throw timeoutError;
         }
 
-        if (error instanceof TypeError || (error as any).code === 'ETIMEDOUT') {
+        if (error instanceof TypeError || error.code === 'ETIMEDOUT') {
           const networkError = new Error(
             `Telegram API ${method} network failure: ${error.message}`,
           );
@@ -167,7 +167,7 @@ export class TelegramService {
     try {
       let dbResult = null;
       try {
-        dbResult = await this.customersService.setCustomerLang(
+        dbResult = await this.customersService._setCustomerLang(
           customerId,
           lang,
         );

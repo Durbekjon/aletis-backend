@@ -1,13 +1,15 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsInt,
   IsOptional,
   IsNumber,
   IsEnum,
-  IsObject,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { OrderStatus } from '@prisma/client';
+import { OrderDetailsDto } from './order-details.dto';
 
 export class CreateOrderDto {
   @ApiPropertyOptional({
@@ -30,20 +32,13 @@ export class CreateOrderDto {
   status?: OrderStatus = OrderStatus.NEW;
 
   @ApiPropertyOptional({
-    description: 'Order details as JSON (customer info, items, etc.)',
-    type: 'object',
-    additionalProperties: true,
-    example: {
-      customerName: 'John Doe',
-      phoneNumber: '+998901234567',
-      location: 'Tashkent, Chilonzor',
-      items: ['iPhone 15 Pro', 'Samsung Galaxy S24'],
-      notes: 'Delivery to office',
-    },
+    description: 'Structured order details (customer info, items, etc.)',
+    type: OrderDetailsDto,
   })
   @IsOptional()
-  @IsObject()
-  details?: Record<string, any>;
+  @ValidateNested()
+  @Type(() => OrderDetailsDto)
+  details?: OrderDetailsDto;
 
   @ApiPropertyOptional({
     description: 'Quantity of items',

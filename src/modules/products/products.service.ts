@@ -44,18 +44,16 @@ export class ProductsService {
       `products:org:${orgId}:page:${page}:limit:${limit}${search ? `:search:${search}` : ''}${order ? `:order:${order}` : ''}${status ? `:status:${status}` : ''}`,
     PRODUCT_DETAILS: (id: number) => `product:${id}:details`,
     ORG_PRODUCTS: (orgId: number) => `org:${orgId}:products`,
-    SCHEMA_PRODUCTS: (schemaId: number) => `schema:${schemaId}:products`,
     PRODUCT_LOCK: (id: number) => `product:${id}:lock`,
   };
 
   // TTL values in seconds
   private readonly TTL = {
-    PRODUCT: 600, // 10 minutes - product data changes infrequently
-    PRODUCTS_LIST: 300, // 5 minutes - list data changes more frequently
-    PRODUCT_DETAILS: 600, // 10 minutes - details change infrequently
-    ORG_PRODUCTS: 900, // 15 minutes - organization product list
-    SCHEMA_PRODUCTS: 1200, // 20 minutes - schema-based product lists
-    LOCK: 30, // 30 seconds - lock timeout for cache stampede protection
+    PRODUCT: 600, // 10 minutes
+    PRODUCTS_LIST: 300, // 5 minutes
+    PRODUCT_DETAILS: 600, // 10 minutes
+    ORG_PRODUCTS: 900, // 15 minutes
+    LOCK: 30,
   };
 
   constructor(
@@ -208,65 +206,117 @@ export class ProductsService {
   }
 
   /**
-   * Invalidate schema-related product caches
+   * Pulls the allowed enum keys out of a SchemaField's `options` JSON blob.
+   * Expected shape: { values: [{ key: string, label_en?, label_ru?, label_uz? }] }
    */
-  private async invalidateSchemaProductCaches(schemaId: number): Promise<void> {
-    const patterns = [`schema:${schemaId}:products`];
-
-    await Promise.all(patterns.map((pattern) => this.invalidateCache(pattern)));
+  private parseEnumOptionKeys(options: unknown): string[] {
+    if (!options || typeof options !== 'object') return [];
+    const values = (options as { values?: unknown }).values;
+    if (!Array.isArray(values)) return [];
+    return values
+      .map((v) =>
+        v && typeof v === 'object' && 'key' in (v as Record<string, unknown>)
+          ? String((v as Record<string, unknown>).key)
+          : null,
+      )
+      .filter((k): k is string => k !== null);
   }
 
   /**
-   * Validates field value based on field type and requirements
+   * Validates a value against its SchemaField definition.
    */
   private validateFieldValue(
-    field: { type: FieldType; required: boolean; options?: string[] },
+    field: { key: string; type: FieldType; required: boolean; options: unknown },
     value: any,
   ): void {
     if (
       field.required &&
       (value === null || value === undefined || value === '')
     ) {
-      throw new BadRequestException(`Field ${field.type} is required`);
+      throw new BadRequestException(`Field "${field.key}" is required`);
     }
 
     if (value === null || value === undefined || value === '') {
-      return; // Optional field can be empty
+      return;
     }
 
     switch (field.type) {
       case FieldType.TEXT:
         if (typeof value !== 'string') {
-          throw new BadRequestException('Text field must be a string');
+          throw new BadRequestException(
+            `Field "${field.key}" must be a string`,
+          );
         }
         break;
       case FieldType.NUMBER:
         if (typeof value !== 'number') {
-          throw new BadRequestException('Number field must be a number');
+          throw new BadRequestException(
+            `Field "${field.key}" must be a number`,
+          );
         }
         break;
       case FieldType.BOOLEAN:
         if (typeof value !== 'boolean') {
-          throw new BadRequestException('Boolean field must be a boolean');
+          throw new BadRequestException(
+            `Field "${field.key}" must be a boolean`,
+          );
         }
         break;
       case FieldType.DATE:
         if (!(value instanceof Date) && typeof value !== 'string') {
           throw new BadRequestException(
-            'Date field must be a date or date string',
+            `Field "${field.key}" must be a date or date string`,
           );
         }
         break;
-      case FieldType.ENUM:
+      case FieldType.ENUM: {
         if (typeof value !== 'string') {
-          throw new BadRequestException('Enum field must be a string');
-        }
-        if (field.options && !field.options.includes(value)) {
           throw new BadRequestException(
-            `Enum value must be one of: ${field.options.join(', ')}`,
+            `Field "${field.key}" must be a string`,
+          );
+        }
+        const keys = this.parseEnumOptionKeys(field.options);
+        if (keys.length > 0 && !keys.includes(value)) {
+          throw new BadRequestException(
+            `Field "${field.key}" must be one of: ${keys.join(', ')}`,
           );
         }
         break;
+      }
+      case FieldType.ENUM_MULTI: {
+        if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
+          throw new BadRequestException(
+            `Field "${field.key}" must be an array of strings`,
+          );
+        }
+        const keys = this.parseEnumOptionKeys(field.options);
+        if (keys.length > 0) {
+          const invalid = (value as string[]).filter(
+            (v) => !keys.includes(v),
+          );
+          if (invalid.length > 0) {
+            throw new BadRequestException(
+              `Field "${field.key}" contains invalid values: ${invalid.join(', ')}`,
+            );
+          }
+        }
+        break;
+      }
+      case FieldType.URL: {
+        if (typeof value !== 'string') {
+          throw new BadRequestException(
+            `Field "${field.key}" must be a string`,
+          );
+        }
+        try {
+          new URL(value);
+        } catch {
+          throw new BadRequestException(
+            `Field "${field.key}" must be a valid URL`,
+          );
+        }
+        break;
+      }
       default:
         throw new BadRequestException(`Unsupported field type: ${field.type}`);
     }
@@ -301,13 +351,14 @@ export class ProductsService {
   }
 
   /**
-   * Transforms field value to the appropriate Prisma field
+   * Transforms field value to the appropriate Prisma column
    */
   private transformFieldValue(fieldType: FieldType, value: any) {
     const result: any = {};
 
     switch (fieldType) {
       case FieldType.TEXT:
+      case FieldType.URL:
         result.valueText = value;
         break;
       case FieldType.NUMBER:
@@ -320,6 +371,7 @@ export class ProductsService {
         result.valueDate = value instanceof Date ? value : new Date(value);
         break;
       case FieldType.ENUM:
+      case FieldType.ENUM_MULTI:
         result.valueJson = value;
         break;
     }
@@ -332,12 +384,12 @@ export class ProductsService {
    */
   private transformFieldValueResponse(
     fieldValue: any,
-    field: any,
+    field: { key: string; type: FieldType },
   ): FieldValueResponseDto {
     return {
       id: fieldValue.id,
       fieldId: fieldValue.fieldId,
-      fieldName: field.name,
+      fieldKey: field.key,
       fieldType: field.type,
       valueText: fieldValue.valueText,
       valueNumber: fieldValue.valueNumber,
@@ -373,17 +425,29 @@ export class ProductsService {
     try {
       const organizationId = await this.getUserOrganizationId(userId);
 
-      // Get the organization's schema
-      const schema = await this.prisma.productSchema.findUnique({
-        where: { organizationId },
-        include: { fields: true },
+      // Resolve the leaf category and its flattened schema.
+      const category = await this.prisma.category.findUnique({
+        where: { id: createProductDto.categoryId },
+        include: { schema: { include: { fields: true } } },
       });
 
-      if (!schema) {
+      if (!category) {
         throw new NotFoundException(
-          'Product schema not found for organization',
+          `Category ${createProductDto.categoryId} not found`,
         );
       }
+      if (!category.isLeaf) {
+        throw new BadRequestException(
+          'Products can only be created in leaf categories',
+        );
+      }
+      if (!category.schema) {
+        throw new BadRequestException(
+          `Category "${category.slug}" has no schema configured`,
+        );
+      }
+
+      const schemaFields = category.schema.fields;
 
       // Validate images if provided
       if (createProductDto.images && createProductDto.images.length > 0) {
@@ -392,21 +456,31 @@ export class ProductsService {
           organizationId,
         );
       }
-      // Validate field values
-      const fieldMap = new Map(schema.fields.map((field) => [field.id, field]));
+
+      // Validate field values + check required fields
+      const fieldMap = new Map(schemaFields.map((field) => [field.id, field]));
+      const providedFieldIds = new Set<number>();
       for (const fieldValue of createProductDto.fields) {
         const field = fieldMap.get(fieldValue.fieldId);
         if (!field) {
           throw new BadRequestException(
-            `Field with ID ${fieldValue.fieldId} not found in schema`,
+            `Field with ID ${fieldValue.fieldId} not part of category "${category.slug}"`,
           );
         }
         this.validateFieldValue(field, fieldValue.value);
+        providedFieldIds.add(field.id);
+      }
+      const missingRequired = schemaFields
+        .filter((f) => f.required && !providedFieldIds.has(f.id))
+        .map((f) => f.key);
+      if (missingRequired.length > 0) {
+        throw new BadRequestException(
+          `Missing required fields: ${missingRequired.join(', ')}`,
+        );
       }
 
-      // Create product with field values in a transaction
+      // Create product with field values in a single transaction
       const result = await this.prisma.$transaction(async (tx) => {
-        // Create the product
         const product = await tx.product.create({
           data: {
             name: createProductDto.name,
@@ -414,7 +488,7 @@ export class ProductsService {
             quantity: createProductDto.quantity,
             status: createProductDto.status,
             currency: createProductDto.currency,
-            schemaId: schema.id,
+            categoryId: category.id,
             organizationId,
             images: createProductDto.images
               ? {
@@ -424,7 +498,6 @@ export class ProductsService {
           },
         });
 
-        // Create field values
         const fieldValues = await Promise.all(
           createProductDto.fields.map((fieldValue) => {
             const field = fieldMap.get(fieldValue.fieldId)!;
@@ -448,7 +521,6 @@ export class ProductsService {
 
       this.logger.log(`Product created successfully: ${result.product.id}`);
 
-      // Activity Log: Product Created
       await this.activityLogService.createLog({
         userId,
         organizationId,
@@ -459,18 +531,12 @@ export class ProductsService {
         data: { name: createProductDto.name },
       });
 
-      // Fetch full product details including images and dynamic fields
       const fullProduct = await this.getProductById(result.product.id, userId);
       await this.embadingService.createProductEmbedding(fullProduct);
 
-      // Invalidate organization product caches since a new product was created
       await this.invalidateOrganizationProductCaches(organizationId);
 
-      // Invalidate schema product caches if applicable
-      await this.invalidateSchemaProductCaches(schema.id);
-
-      // Return the created product with full details
-      return this.getProductById(result.product.id, userId);
+      return fullProduct;
     } catch (error) {
       if (
         error instanceof NotFoundException ||
@@ -500,7 +566,7 @@ export class ProductsService {
       // Check if product exists and belongs to user's organization
       const existingProduct = await this.prisma.product.findFirst({
         where: { id: productId, organizationId },
-        include: { schema: { include: { fields: true } } },
+        include: { category: { include: { schema: { include: { fields: true } } } } },
       });
 
       if (!existingProduct) {
@@ -508,6 +574,12 @@ export class ProductsService {
           'Product not found or does not belong to your organization',
         );
       }
+      if (!existingProduct.category.schema) {
+        throw new BadRequestException(
+          'Product category has no schema configured',
+        );
+      }
+      const schemaFields = existingProduct.category.schema.fields;
 
       // Validate images if provided
       if (updateProductDto.images && updateProductDto.images.length > 0) {
@@ -520,14 +592,14 @@ export class ProductsService {
       // Validate field values if provided
       if (updateProductDto.fields) {
         const fieldMap = new Map(
-          existingProduct.schema.fields.map((field) => [field.id, field]),
+          schemaFields.map((field) => [field.id, field]),
         );
         for (const fieldValue of updateProductDto.fields) {
           if (fieldValue.fieldId) {
             const field = fieldMap.get(fieldValue.fieldId);
             if (!field) {
               throw new BadRequestException(
-                `Field with ID ${fieldValue.fieldId} not found in schema`,
+                `Field with ID ${fieldValue.fieldId} not part of category "${existingProduct.category.slug}"`,
               );
             }
             if (fieldValue.value !== undefined) {
@@ -568,7 +640,7 @@ export class ProductsService {
         if (updateProductDto.fields) {
           for (const fieldValue of updateProductDto.fields) {
             if (fieldValue.fieldId && fieldValue.value !== undefined) {
-              const field = existingProduct.schema.fields.find(
+              const field = schemaFields.find(
                 (f) => f.id === fieldValue.fieldId,
               );
               if (field) {
@@ -632,7 +704,6 @@ export class ProductsService {
       await Promise.all([
         this.invalidateProductCaches(productId),
         this.invalidateOrganizationProductCaches(organizationId),
-        this.invalidateSchemaProductCaches(existingProduct.schemaId),
       ]);
 
       // Return the updated product with full details
@@ -681,12 +752,6 @@ export class ProductsService {
         await this.fileDeleteService.deleteFilesByKeys(keys);
       }
 
-      // Get product details before deletion for cache invalidation
-      const productToDelete = await this.prisma.product.findUnique({
-        where: { id: productId },
-        select: { schemaId: true },
-      });
-
       // Delete product (field values will be cascade deleted)
       await this.prisma.product.delete({
         where: { id: productId },
@@ -696,9 +761,6 @@ export class ProductsService {
       await Promise.all([
         this.invalidateProductCaches(productId),
         this.invalidateOrganizationProductCaches(organizationId),
-        productToDelete
-          ? this.invalidateSchemaProductCaches(productToDelete.schemaId)
-          : Promise.resolve(),
       ]);
 
       this.logger.log(`Product deleted successfully: ${productId}`);
@@ -748,7 +810,7 @@ export class ProductsService {
           const product = await this.prisma.product.findFirst({
             where: { id: productId, organizationId },
             include: {
-              schema: true,
+              category: { select: { id: true, slug: true } },
               images: true,
               fields: {
                 include: {
@@ -786,8 +848,8 @@ export class ProductsService {
             quantity: product.quantity,
             currency: product.currency,
             status: product.status,
-            schemaId: product.schemaId,
-            schemaName: product.schema.name,
+            categoryId: product.category.id,
+            categorySlug: product.category.slug,
             organizationId: product.organizationId,
             images: transformedImages,
             fields: transformedFields,
@@ -894,7 +956,7 @@ export class ProductsService {
               skip,
               take,
               include: {
-                schema: true,
+                category: { select: { id: true, slug: true } },
                 images: {
                   select: {
                     id: true,
@@ -936,8 +998,8 @@ export class ProductsService {
                 price: product.price,
                 quantity: product.quantity,
                 status: product.status,
-                schemaId: product.schemaId,
-                schemaName: product.schema.name,
+                categoryId: product.category.id,
+                categorySlug: product.category.slug,
                 organizationId: product.organizationId,
                 currency: product.currency,
                 images: transformedImages,
@@ -986,7 +1048,7 @@ export class ProductsService {
       // Check if all products exist and belong to user's organization
       const products = await this.prisma.product.findMany({
         where: { id: { in: productIds }, organizationId },
-        select: { id: true, schemaId: true },
+        select: { id: true },
       });
 
       if (products.length !== productIds.length) {
@@ -996,9 +1058,6 @@ export class ProductsService {
           `Products not found or do not belong to your organization: ${missingIds.join(', ')}`,
         );
       }
-
-      // Get unique schema IDs for cache invalidation
-      const schemaIds = [...new Set(products.map((p) => p.schemaId))];
 
       // Delete products in a transaction
       await this.prisma.$transaction(
@@ -1011,14 +1070,8 @@ export class ProductsService {
 
       // Invalidate all caches related to deleted products and organization
       await Promise.all([
-        // Invalidate individual product caches
         ...productIds.map((id) => this.invalidateProductCaches(id)),
-        // Invalidate organization product caches
         this.invalidateOrganizationProductCaches(organizationId),
-        // Invalidate schema product caches
-        ...schemaIds.map((schemaId) =>
-          this.invalidateSchemaProductCaches(schemaId),
-        ),
       ]);
 
       this.logger.log(`Successfully deleted ${products.length} products`);

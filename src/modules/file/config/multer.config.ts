@@ -1,52 +1,42 @@
+import { BadRequestException } from '@nestjs/common';
 import { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { memoryStorage } from 'multer';
 import { Request } from 'express';
 
+export const MAX_UPLOAD_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+export const MAX_UPLOAD_FILES_PER_REQUEST = 5;
+
+export const ALLOWED_UPLOAD_MIME_TYPES: ReadonlySet<string> = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+
+/**
+ * Uploads land in memory as a Buffer (file.buffer). The service then verifies
+ * magic bytes and forwards to ImageKit — nothing touches local disk.
+ */
 export const multerConfig: MulterOptions = {
-  storage: diskStorage({
-    destination: (req: Request, file: Express.Multer.File, cb: any) => {
-      const uploadPath = join(process.cwd(), 'public', 'uploads');
-
-      // Create directory if it doesn't exist
-      if (!existsSync(uploadPath)) {
-        mkdirSync(uploadPath, { recursive: true });
-      }
-
-      cb(null, uploadPath);
-    },
-    filename: (
-      req: Request,
-      file: Express.Multer.File,
-      cb: (error: Error | null, filename: string) => void,
-    ) => {
-      // Generate unique filename
-      const timestamp = Date.now();
-      const randomString = Math.random().toString(36).substring(2, 15);
-      const extension = extname(file.originalname);
-      const baseName = file.originalname.replace(extension, '');
-      const uniqueFilename = `${baseName}_${timestamp}_${randomString}${extension}`;
-
-      cb(null, uniqueFilename);
-    },
-  }),
+  storage: memoryStorage(),
   fileFilter: (
     req: Request,
     file: Express.Multer.File,
     cb: (error: Error | null, acceptFile: boolean) => void,
   ) => {
-    // Allow all file types for now, but you can add restrictions here
-    // Example: only allow images
-    // if (file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
-    //   cb(null, true);
-    // } else {
-    //   cb(new Error('Only image files are allowed!'), false);
-    // }
+    if (!ALLOWED_UPLOAD_MIME_TYPES.has(file.mimetype)) {
+      cb(
+        new BadRequestException(
+          `Unsupported file type: ${file.mimetype}. Allowed: ${[...ALLOWED_UPLOAD_MIME_TYPES].join(', ')}`,
+        ),
+        false,
+      );
+      return;
+    }
     cb(null, true);
   },
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-    files: 10, // Maximum 10 files per request
+    fileSize: MAX_UPLOAD_FILE_SIZE_BYTES,
+    files: MAX_UPLOAD_FILES_PER_REQUEST,
   },
 };

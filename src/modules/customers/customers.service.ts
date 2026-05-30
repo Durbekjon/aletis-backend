@@ -129,12 +129,32 @@ export class CustomersService {
     });
   }
 
-  async setCustomerLang(customerId: number, lang: string): Promise<any> {
-    const updated = await this.prisma.customer.update({
+  async setCustomerLang(
+    userId: number,
+    customerId: number,
+    lang: string,
+  ): Promise<Customer> {
+    const organization = await this.validateUser(userId);
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, organizationId: organization.id },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+    return this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { lang },
+    });
+  }
+
+  // System-internal path used by the Telegram bot's language-select callback,
+  // which acts on the customer's own behalf and has no authenticated user.
+  async _setCustomerLang(customerId: number, lang: string): Promise<Customer> {
+    return this.prisma.customer.update({
       where: { id: customerId },
       data: { lang },
     });
-    return updated;
   }
 
   private async validateUser(userId: number): Promise<Organization> {
