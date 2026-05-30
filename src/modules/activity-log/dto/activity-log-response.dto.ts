@@ -20,11 +20,13 @@ export class ActivityLogResponseDto {
   @ApiPropertyOptional({ description: 'Related entity ID', example: 123 })
   entityId?: number | null;
 
-  @ApiPropertyOptional({ description: 'Additional metadata', type: 'object', additionalProperties: true })
+  @ApiPropertyOptional({
+    description: 'Additional metadata',
+    type: 'object',
+    additionalProperties: true,
+  })
   meta?: Record<string, any> | null;
 
   @ApiPropertyOptional({ description: 'Actor user info' })
   user?: { id: number; firstName: string | null } | null;
 }
-
-

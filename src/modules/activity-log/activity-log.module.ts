@@ -10,5 +10,3 @@ import { PrismaModule } from '@core/prisma/prisma.module';
   exports: [ActivityLogService],
 })
 export class ActivityLogModule {}
-
-

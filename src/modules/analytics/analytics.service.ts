@@ -14,9 +14,24 @@ export class AnalyticsService {
     private readonly redis: RedisService,
   ) {}
 
-  private parsePeriod(period: string): { from: Date; to: Date; prevFrom: Date; prevTo: Date } {
+  private parsePeriod(period: string): {
+    from: Date;
+    to: Date;
+    prevFrom: Date;
+    prevTo: Date;
+  } {
     const now = new Date();
-    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+    const to = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
     const n = period.endsWith('d') ? parseInt(period) : 7;
     const from = new Date(to);
     from.setUTCDate(to.getUTCDate() - (n - 1));
@@ -29,7 +44,17 @@ export class AnalyticsService {
 
   private startOfTodayUTC(): Date {
     const now = new Date();
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    return new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
   }
 
   private async resolveOrgId(userId: number): Promise<number> {
@@ -63,48 +88,114 @@ export class AnalyticsService {
     // Aggregate sums for completed days in range (exclude today for realtime add-on)
     const [currentAgg, previous] = await Promise.all([
       (this.prisma as any).analyticsDailyAggregate.aggregate({
-        _sum: { revenue: true, orders: true, conversations: true, inquiries: true, ordersCompleted: true },
+        _sum: {
+          revenue: true,
+          orders: true,
+          conversations: true,
+          inquiries: true,
+          ordersCompleted: true,
+        },
         where: { organizationId: orgId, day: { gte: from, lt: startToday } },
       }),
       (this.prisma as any).analyticsDailyAggregate.aggregate({
-        _sum: { revenue: true, orders: true, conversations: true, inquiries: true, ordersCompleted: true },
+        _sum: {
+          revenue: true,
+          orders: true,
+          conversations: true,
+          inquiries: true,
+          ordersCompleted: true,
+        },
         where: { organizationId: orgId, day: { gte: prevFrom, lte: prevTo } },
       }),
     ]);
 
     // Real-time for today
-    const [todayRevenueAgg, todayOrdersCount, todayConversations, todayInquiries, todayCompleted] = await Promise.all([
-      this.prisma.order.aggregate({ _sum: { totalPrice: true }, where: { organizationId: orgId, createdAt: { gte: startToday, lte: to } } }),
-      this.prisma.order.count({ where: { organizationId: orgId, createdAt: { gte: startToday, lte: to } } }),
-      this.prisma.message.findMany({ where: { bot: { organizationId: orgId }, createdAt: { gte: startToday, lte: to } }, distinct: ['customerId'], select: { customerId: true } }).then(a => a.length),
-      this.prisma.message.count({ where: { bot: { organizationId: orgId }, createdAt: { gte: startToday, lte: to }, isInquiry: true as any } }),
-      this.prisma.order.count({ where: { organizationId: orgId, status: 'DELIVERED', createdAt: { gte: startToday, lte: to } } }),
+    const [
+      todayRevenueAgg,
+      todayOrdersCount,
+      todayConversations,
+      todayInquiries,
+      todayCompleted,
+    ] = await Promise.all([
+      this.prisma.order.aggregate({
+        _sum: { totalPrice: true },
+        where: {
+          organizationId: orgId,
+          createdAt: { gte: startToday, lte: to },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          organizationId: orgId,
+          createdAt: { gte: startToday, lte: to },
+        },
+      }),
+      this.prisma.message
+        .findMany({
+          where: {
+            bot: { organizationId: orgId },
+            createdAt: { gte: startToday, lte: to },
+          },
+          distinct: ['customerId'],
+          select: { customerId: true },
+        })
+        .then((a) => a.length),
+      this.prisma.message.count({
+        where: {
+          bot: { organizationId: orgId },
+          createdAt: { gte: startToday, lte: to },
+          isInquiry: true as any,
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          organizationId: orgId,
+          status: 'DELIVERED',
+          createdAt: { gte: startToday, lte: to },
+        },
+      }),
     ]);
 
-    const safe = (v?: number | null) => (v ?? 0);
-    const currRevenue = safe(currentAgg._sum.revenue) + safe(todayRevenueAgg._sum.totalPrice);
+    const safe = (v?: number | null) => v ?? 0;
+    const currRevenue =
+      safe(currentAgg._sum.revenue) + safe(todayRevenueAgg._sum.totalPrice);
     const prevRevenue = safe(previous._sum.revenue);
     const currOrders = safe(currentAgg._sum.orders) + todayOrdersCount;
     const prevOrders = safe(previous._sum.orders);
 
-    const percent = (a: number, b: number) => (b === 0 ? (a > 0 ? 100 : 0) : ((a - b) / b) * 100);
+    const percent = (a: number, b: number) =>
+      b === 0 ? (a > 0 ? 100 : 0) : ((a - b) / b) * 100;
 
     const response = {
       ordersToday: currOrders,
       ordersChange: `${percent(currOrders, prevOrders).toFixed(0)}%`,
-      revenue: { amount: currRevenue, currency: 'USD', change: `${percent(currRevenue, prevRevenue).toFixed(0)}%` },
-      activeConversations: { count: safe(currentAgg._sum.conversations) + todayConversations, needAttention: 0 },
+      revenue: {
+        amount: currRevenue,
+        currency: 'USD',
+        change: `${percent(currRevenue, prevRevenue).toFixed(0)}%`,
+      },
+      activeConversations: {
+        count: safe(currentAgg._sum.conversations) + todayConversations,
+        needAttention: 0,
+      },
       conversionRate: {
         conversationToInquiry: 0,
         inquiryToCart: 0,
         cartToOrder: 0,
-        orderToCompletion: currOrders === 0 ? 0 : ((safe(currentAgg._sum.ordersCompleted) + todayCompleted) / currOrders) * 100,
+        orderToCompletion:
+          currOrders === 0
+            ? 0
+            : ((safe(currentAgg._sum.ordersCompleted) + todayCompleted) /
+                currOrders) *
+              100,
       },
       period,
     };
 
     await this.redis.set(cacheKey, response, this.ttlSeconds);
-    this.logger.verbose(`Summary computed in ${Date.now() - started}ms for orgId=${orgId}, period=${period}`);
+    this.logger.verbose(
+      `Summary computed in ${Date.now() - started}ms for orgId=${orgId}, period=${period}`,
+    );
     return response;
   }
 
@@ -128,16 +219,40 @@ export class AnalyticsService {
       select: { day: true, revenue: true, orders: true },
     });
 
-    const data = (rows as Array<{ day: Date; revenue: number; orders: number }>).map((r) => ({ date: r.day, value: metric === 'revenue' ? r.revenue : r.orders }));
+    const data = (
+      rows as Array<{ day: Date; revenue: number; orders: number }>
+    ).map((r) => ({
+      date: r.day,
+      value: metric === 'revenue' ? r.revenue : r.orders,
+    }));
 
     // Append today's realtime point
     const [todayRevenueAgg, todayOrdersCount] = await Promise.all([
-      this.prisma.order.aggregate({ _sum: { totalPrice: true }, where: { organizationId: orgId, createdAt: { gte: startToday, lte: to } } }),
-      this.prisma.order.count({ where: { organizationId: orgId, createdAt: { gte: startToday, lte: to } } }),
+      this.prisma.order.aggregate({
+        _sum: { totalPrice: true },
+        where: {
+          organizationId: orgId,
+          createdAt: { gte: startToday, lte: to },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          organizationId: orgId,
+          createdAt: { gte: startToday, lte: to },
+        },
+      }),
     ]);
-    data.push({ date: startToday, value: metric === 'revenue' ? (todayRevenueAgg._sum.totalPrice ?? 0) : todayOrdersCount });
+    data.push({
+      date: startToday,
+      value:
+        metric === 'revenue'
+          ? (todayRevenueAgg._sum.totalPrice ?? 0)
+          : todayOrdersCount,
+    });
     await this.redis.set(cacheKey, data, this.ttlSeconds);
-    this.logger.verbose(`Trends computed in ${Date.now() - started}ms for orgId=${orgId}, period=${period}, metric=${metric}`);
+    this.logger.verbose(
+      `Trends computed in ${Date.now() - started}ms for orgId=${orgId}, period=${period}, metric=${metric}`,
+    );
     return data;
   }
 
@@ -147,16 +262,48 @@ export class AnalyticsService {
     const started = Date.now();
     const startToday = this.startOfTodayUTC();
     const agg = await (this.prisma as any).analyticsDailyAggregate.aggregate({
-      _sum: { conversations: true, inquiries: true, orders: true, ordersCompleted: true },
+      _sum: {
+        conversations: true,
+        inquiries: true,
+        orders: true,
+        ordersCompleted: true,
+      },
       where: { organizationId: orgId, day: { gte: from, lt: startToday } },
     });
     // Today's realtime
-    const [todayConversations, todayInquiries, todayOrders, todayCompleted] = await Promise.all([
-      this.prisma.message.findMany({ where: { bot: { organizationId: orgId }, createdAt: { gte: startToday, lte: to } }, distinct: ['customerId'], select: { customerId: true } }).then(a => a.length),
-      this.prisma.message.count({ where: { bot: { organizationId: orgId }, createdAt: { gte: startToday, lte: to }, isInquiry: true as any } }),
-      this.prisma.order.count({ where: { organizationId: orgId, createdAt: { gte: startToday, lte: to } } }),
-      this.prisma.order.count({ where: { organizationId: orgId, status: 'DELIVERED', createdAt: { gte: startToday, lte: to } } }),
-    ]);
+    const [todayConversations, todayInquiries, todayOrders, todayCompleted] =
+      await Promise.all([
+        this.prisma.message
+          .findMany({
+            where: {
+              bot: { organizationId: orgId },
+              createdAt: { gte: startToday, lte: to },
+            },
+            distinct: ['customerId'],
+            select: { customerId: true },
+          })
+          .then((a) => a.length),
+        this.prisma.message.count({
+          where: {
+            bot: { organizationId: orgId },
+            createdAt: { gte: startToday, lte: to },
+            isInquiry: true as any,
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            organizationId: orgId,
+            createdAt: { gte: startToday, lte: to },
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            organizationId: orgId,
+            status: 'DELIVERED',
+            createdAt: { gte: startToday, lte: to },
+          },
+        }),
+      ]);
     const conversations = (agg._sum.conversations ?? 0) + todayConversations;
     const inquiries = (agg._sum.inquiries ?? 0) + todayInquiries;
     const orders = (agg._sum.orders ?? 0) + todayOrders;
@@ -174,7 +321,9 @@ export class AnalyticsService {
     const orgId = await this.resolveOrgId(userId);
     const { from, to } = this.parsePeriod(period);
     const started = Date.now();
-    const rows = await this.prisma.$queryRaw<{ productId: number; qty: number; revenue: number }[]>`
+    const rows = await this.prisma.$queryRaw<
+      { productId: number; qty: number; revenue: number }[]
+    >`
       SELECT oi."productId" as "productId",
              SUM(oi.quantity) as qty,
              SUM(oi.price * oi.quantity) as revenue
@@ -186,9 +335,9 @@ export class AnalyticsService {
       ORDER BY revenue DESC
       LIMIT 10;
     `;
-    this.logger.verbose(`Top products computed in ${Date.now() - started}ms for orgId=${orgId}, period=${period}`);
+    this.logger.verbose(
+      `Top products computed in ${Date.now() - started}ms for orgId=${orgId}, period=${period}`,
+    );
     return rows;
   }
 }
-
-

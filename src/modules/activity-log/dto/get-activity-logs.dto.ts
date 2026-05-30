@@ -1,4 +1,11 @@
-import { IsEnum, IsInt, IsOptional, IsPositive, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  Max,
+  Min,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ActionType, EntityType } from '@prisma/client';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -67,4 +74,3 @@ export class GetActivityLogsDto {
   @Transform(({ value }) => (value ? new Date(value) : undefined))
   to?: Date;
 }
-

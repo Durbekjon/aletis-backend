@@ -3,7 +3,10 @@ import { PaginatedResponseDto } from '@/shared/dto';
 import { ActivityLogResponseDto } from './activity-log-response.dto';
 
 export class ActivityLogPaginatedResponseDto extends PaginatedResponseDto<ActivityLogResponseDto> {
-  @ApiProperty({ description: 'Array of activity logs', type: [ActivityLogResponseDto] })
+  @ApiProperty({
+    description: 'Array of activity logs',
+    type: [ActivityLogResponseDto],
+  })
   declare items: ActivityLogResponseDto[];
 
   @ApiProperty({ description: 'Total number of activity logs', example: 150 })
@@ -21,8 +24,9 @@ export class ActivityLogPaginatedResponseDto extends PaginatedResponseDto<Activi
   @ApiProperty({ description: 'Whether there is a next page', example: true })
   declare hasNext: boolean;
 
-  @ApiProperty({ description: 'Whether there is a previous page', example: false })
+  @ApiProperty({
+    description: 'Whether there is a previous page',
+    example: false,
+  })
   declare hasPrevious: boolean;
 }
-
-

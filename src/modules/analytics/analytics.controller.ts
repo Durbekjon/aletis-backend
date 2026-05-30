@@ -56,5 +56,3 @@ export class AnalyticsController {
     return this.analyticsService.getTopProducts(Number(user.userId), period);
   }
 }
-
-

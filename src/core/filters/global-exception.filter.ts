@@ -47,7 +47,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // Only log as error for server errors (5xx) or unexpected errors
     // Client errors (4xx) are logged as warnings or debug
     const isServerError = status >= HttpStatus.INTERNAL_SERVER_ERROR;
-    const isClientError = status >= HttpStatus.BAD_REQUEST && status < HttpStatus.INTERNAL_SERVER_ERROR;
+    const isClientError =
+      status >= HttpStatus.BAD_REQUEST &&
+      status < HttpStatus.INTERNAL_SERVER_ERROR;
     const isUnexpectedError = !(exception instanceof HttpException);
 
     if (isServerError || isUnexpectedError) {
@@ -62,11 +64,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       });
     } else if (isClientError) {
       // Client errors (4xx) are expected and shouldn't be logged as errors
-      this.logger.debug(`Client error: ${request.method} ${request.url} - ${status} ${message}`, {
-        requestId,
-        status,
-        message,
-      });
+      this.logger.debug(
+        `Client error: ${request.method} ${request.url} - ${status} ${message}`,
+        {
+          requestId,
+          status,
+          message,
+        },
+      );
     }
 
     // Only send to Telegram for server errors (5xx) or unexpected errors

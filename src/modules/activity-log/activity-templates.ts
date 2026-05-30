@@ -104,4 +104,3 @@ export type ActivityTemplateKey =
   | 'SCHEMA_CREATED'
   | 'SCHEMA_UPDATED'
   | 'SCHEMA_DELETED';
-

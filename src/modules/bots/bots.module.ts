@@ -9,7 +9,13 @@ import { ActivityLogModule } from '../activity-log/activity-log.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { FileModule } from '../file/file.module';
 @Module({
-  imports: [WebhookHelperModule, RedisModule, ActivityLogModule, TelegramModule, FileModule],
+  imports: [
+    WebhookHelperModule,
+    RedisModule,
+    ActivityLogModule,
+    TelegramModule,
+    FileModule,
+  ],
   controllers: [BotsController],
   providers: [BotsService, EncryptionService, ConfigService],
   exports: [BotsService],

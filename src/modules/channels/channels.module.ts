@@ -8,7 +8,13 @@ import { TelegramModule } from '../telegram/telegram.module';
 import { FileModule } from '../file/file.module';
 
 @Module({
-  imports: [AuthModule, CoreModule, ActivityLogModule, TelegramModule, FileModule],
+  imports: [
+    AuthModule,
+    CoreModule,
+    ActivityLogModule,
+    TelegramModule,
+    FileModule,
+  ],
   controllers: [ChannelsController],
   providers: [ChannelsService],
   exports: [ChannelsService],

@@ -1,5 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength, IsInt } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  IsInt,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateProfileDto {
@@ -17,7 +23,11 @@ export class UpdateProfileDto {
   @MinLength(2)
   lastName?: string | null;
 
-  @ApiPropertyOptional({ example: 1, description: 'File ID of the user logo', nullable: true })
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'File ID of the user logo',
+    nullable: true,
+  })
   @IsInt()
   @IsOptional()
   @Type(() => Number)
