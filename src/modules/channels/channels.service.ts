@@ -264,7 +264,7 @@ export class ChannelsService {
       },
     );
 
-    const errorCode = (response as any)?.error_code;
+    const errorCode = response?.error_code;
     if (errorCode === TELEGRAM_NETWORK_ERROR) {
       throw new ServiceUnavailableException(
         'Unable to reach Telegram API. Please try again later.',

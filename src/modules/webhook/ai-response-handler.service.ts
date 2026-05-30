@@ -421,7 +421,7 @@ export class AiResponseHandlerService {
 
     searchResults.forEach((p) => {
       // Handle both Weaviate object structure (properties in 'properties') and flat structure
-      const props = p.properties ? (p.properties as any) : p;
+      const props = p.properties ? p.properties : p;
 
       const price = props.price
         ? `${props.price} ${props.currency || 'USD'}`

@@ -3,7 +3,7 @@ import { EmbadingService } from './embading.service';
 import { CoreModule } from '@core/core.module';
 
 @Module({
-  imports:[CoreModule],
+  imports: [CoreModule],
   providers: [EmbadingService],
   exports: [EmbadingService],
 })

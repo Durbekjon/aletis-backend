@@ -12,5 +12,3 @@ import { AnalyticsScheduler } from './analytics.scheduler';
   exports: [AnalyticsService],
 })
 export class AnalyticsModule {}
-
-

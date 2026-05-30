@@ -7,7 +7,13 @@ import { FileDeleteModule } from '@/core/file-delete/file-delete.module';
 import { ActivityLogModule } from '../activity-log/activity-log.module';
 import { EmbadingModule } from '../embading/embading.module';
 @Module({
-  imports: [PrismaModule, RedisModule, FileDeleteModule, ActivityLogModule, EmbadingModule],
+  imports: [
+    PrismaModule,
+    RedisModule,
+    FileDeleteModule,
+    ActivityLogModule,
+    EmbadingModule,
+  ],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],
