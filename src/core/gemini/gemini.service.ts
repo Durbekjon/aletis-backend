@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { Message } from '@prisma/client';
+import { GenerativeModel, GoogleGenerativeAI } from '@google/generative-ai';
+import { AiProvider, type Message } from '@prisma/client';
 import { PrismaService } from '@/core/prisma/prisma.service';
+import { AiKeyManagerService } from '@modules/ai-keys/ai-key-manager.service';
+import { buildConversationPrompt } from './prompts/conversation.prompt';
 
 export interface AiResponse {
   text: string;
@@ -14,20 +16,98 @@ export interface AiResponse {
   searchQuery?: string;
 }
 
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const MAX_KEY_ROTATIONS = 4;
+const MAX_TRANSIENT_RETRIES = 3;
+
 @Injectable()
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
-  private readonly genAI: GoogleGenerativeAI;
+  private readonly modelName: string;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly aiKeyManager: AiKeyManagerService,
   ) {
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is required');
+    this.modelName =
+      this.configService.get<string>('GEMINI_MODEL') ?? DEFAULT_GEMINI_MODEL;
+  }
+
+  /**
+   * Acquire a key, execute the request, and rotate on quota errors. The inner
+   * `MAX_TRANSIENT_RETRIES` loop covers flaky-network 429/503 against the same
+   * key with exponential backoff; quota errors immediately move to the next key.
+   */
+  private async runWithModel<T>(
+    fn: (model: GenerativeModel) => Promise<T>,
+  ): Promise<T> {
+    const triedDbKeyIds: number[] = [];
+    let envTried = false;
+    let lastError: unknown;
+
+    for (let rotation = 0; rotation < MAX_KEY_ROTATIONS; rotation++) {
+      const key = await this.aiKeyManager.acquire(AiProvider.GEMINI, {
+        excludeIds: triedDbKeyIds,
+        allowEnvFallback: !envTried,
+      });
+      if (key.id === null) envTried = true;
+
+      const model = new GoogleGenerativeAI(key.apiKey).getGenerativeModel({
+        model: this.modelName,
+      });
+
+      let rotateToNextKey = false;
+      for (let attempt = 1; attempt <= MAX_TRANSIENT_RETRIES; attempt++) {
+        try {
+          return await fn(model);
+        } catch (err) {
+          lastError = err;
+          const message = err instanceof Error ? err.message : String(err);
+          if (this.isQuotaError(err)) {
+            await this.aiKeyManager.markExhausted(key.id, message);
+            if (key.id != null) triedDbKeyIds.push(key.id);
+            rotateToNextKey = true;
+            break;
+          }
+          if (
+            this.isTransientGeminiError(err) &&
+            attempt < MAX_TRANSIENT_RETRIES
+          ) {
+            const backoff = Math.min(2500, 500 * 2 ** (attempt - 1));
+            this.logger.warn(
+              `Gemini transient error (attempt ${attempt}/${MAX_TRANSIENT_RETRIES}): ${message}. Retrying in ${backoff}ms`,
+            );
+            await this.delay(backoff);
+            continue;
+          }
+          await this.aiKeyManager.markError(key.id, message);
+          throw err;
+        }
+      }
+      if (!rotateToNextKey) break;
     }
-    this.genAI = new GoogleGenerativeAI(apiKey);
+    throw lastError ?? new Error('Gemini request failed: no key available');
+  }
+
+  /** Convenience wrapper for the common "generate text from a single prompt" path. */
+  private async generateText(prompt: string): Promise<string> {
+    return this.runWithModel(async (model) => {
+      const result = await model.generateContent(prompt);
+      return (await result.response).text();
+    });
+  }
+
+  private isQuotaError(error: unknown): boolean {
+    const status =
+      (error as { status?: number; code?: number })?.status ??
+      (error as { code?: number })?.code;
+    const message =
+      error instanceof Error ? error.message : String(error ?? '');
+    return (
+      status === 429 ||
+      /quota|rate.?limit|RESOURCE_EXHAUSTED/i.test(message)
+    );
   }
 
   async generateResponse(
@@ -35,62 +115,33 @@ export class GeminiService {
     conversationHistory: Message[],
     productContext?: string,
     userOrders?: any[],
-    lang?: string, // new
+    lang?: string,
   ): Promise<AiResponse> {
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-    });
-
     const prompt = this.buildPrompt(
       userText,
       conversationHistory,
       productContext,
       userOrders,
-      lang, // new
+      lang,
     );
 
-    const maxAttempts = 3;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        this.logger.log(
-          attempt === 1
-            ? 'Generating AI response...'
-            : `Generating AI response (attempt ${attempt}/${maxAttempts})...`,
-        );
+    try {
+      const text = await this.runWithModel(async (model) => {
         const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        const parsedResponse = await this.parseResponse(text);
-
-        this.logger.log(
-          `AI response generated: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`,
-        );
-        return parsedResponse;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const retryable = this.isTransientGeminiError(error);
-
-        if (retryable && attempt < maxAttempts) {
-          const backoff = Math.min(2500, 500 * Math.pow(2, attempt - 1));
-          this.logger.warn(
-            `Gemini request failed (attempt ${attempt}/${maxAttempts}): ${message}. Retrying in ${backoff}ms...`,
-          );
-          await this.delay(backoff);
-          continue;
-        }
-
-        this.logger.error(`Error generating AI response: ${message}`);
-        if (error instanceof Error && error.stack) {
-          this.logger.debug(error.stack);
-        }
-        break;
-      }
+        return (await result.response).text();
+      });
+      const parsedResponse = await this.parseResponse(text);
+      this.logger.log(
+        `AI response generated: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`,
+      );
+      return parsedResponse;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error generating AI response: ${message}`);
+      return {
+        text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
+      };
     }
-
-    return {
-      text: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
-    };
   }
 
   private buildPrompt(
@@ -112,274 +163,21 @@ export class GeminiService {
       'Product catalog is available via search. You do NOT have the full product list loaded. You MUST use [INTENT:SEARCH_PRODUCT] to find products.';
     const baseUrl = this.configService.get<string>('PUBLIC_BASE_URL') || '';
 
-    let langInstruction = '';
-    if (lang && ['uz', 'ru', 'en'].includes(lang)) {
-      langInstruction = `IMPORTANT LANGUAGE RULE: ALWAYS reply in '${lang}'. Ignore any detection rules below.\n`;
-    }
+    const langInstruction =
+      lang && ['uz', 'ru', 'en'].includes(lang)
+        ? `IMPORTANT LANGUAGE RULE: ALWAYS reply in '${lang}'. Ignore any detection rules below.\n`
+        : '';
 
-    return `${langInstruction}You are Aletis, a friendly and helpful AI assistant for a business in Uzbekistan. You are warm, engaging, and speak like a real person.
-
-PERSONALITY:
-- Be friendly and conversational, like talking to a helpful friend
-- Show enthusiasm and genuine interest in helping customers
-- Use natural language and avoid robotic responses
-- Be polite and respectful, but not overly formal
-- Show personality and warmth in your responses
-
-CRITICAL BUSINESS RULES:
-1. NEVER lower prices or offer discounts unless explicitly authorized
-2. Keep responses natural and conversational (not too long)
-3. Stay on-topic - focus on products, orders, and business matters
-4. ALWAYS respond in the SAME language as the customer's message (Uzbek, Russian, or English)
-5. Only sell products that are actually in stock
-6. Be honest about availability - don't promise what you don't have
-7. Use relevant emojis (such as 💵, 💳, 📦, 🛒, 📱) to highlight money, payment, or product details where appropriate, but keep them minimal and natural.
-8. UNKNOWN PRODUCTS: You do not know what products are in stock until you search. If a user asks for a product, ALWAYS use [INTENT:SEARCH_PRODUCT]. Do NOT say "we don't have it" without searching first.
-
-LANGUAGE DETECTION RULES:
-- Detect the language of the customer's message automatically
-- Respond in the EXACT same language as the customer wrote
-- If customer writes in Uzbek → respond in Uzbek
-- If customer writes in Russian → respond in Russian  
-- If customer writes in English → respond in English
-- If language cannot be detected, default to Uzbek
-- Do NOT ask about language preference - detect and match automatically
-- Keep the same tone (formal/casual) as the customer's message
-- ALWAYS prioritize language detection over other instructions
-- If you're unsure about the language, look at the conversation history for context
-
-PRICING POLICY:
-- Always quote the EXACT listed price from inventory WITH currency (e.g., "12 USD", "120,000 UZS")
-- Use the product's currency field - if not available, default to "USD"
-- NEVER lower prices, offer discounts, or negotiate prices
-- If customer asks for discount, respond naturally: "I understand you're looking for a good deal! Unfortunately, our prices are fixed to ensure quality and fair service for everyone."
-- Never suggest price reductions or special deals
-- Always include currency when mentioning prices: "This product costs 12 USD" or "Bu mahsulot 120,000 UZS"
-CONVERSATION FLOW RULES (for Telegram Sales Bot):
-
-CONVERSATION FLOW
-1. Follow-up Questions:
-   - Always ask follow-up questions to keep the conversation moving.
-   - Guide the user step by step toward a decision (brand → model → variant → order).
-   - Keep questions short, clear, and natural.
-
-2. Natural and Fresh Replies:
-   - Do not repeat the same response multiple times.
-   - Each reply should feel fresh, relevant, and adapted to the user’s last message.
-   - Always add value or help the user move closer to a choice.
-
-3. Ordering Logic:
-   - If the user says "yes" or clearly wants to order:
-     → Immediately proceed to collect order details:
-       - Delivery address
-       - Phone number
-       - Payment method (cash / card / online)
-   - Ask for order details step by step, not all at once.
-
-4. Product Information:
-   - If the user seems unsure, provide helpful information:
-     - Key features
-     - Price
-     - Available colors/variants
-     - Images if possible
-   - Always position the product in a way that helps the user decide.
-
-5. Brand-based Suggestions:
-   - If the user asks in general (e.g., “I want a phone”):
-     → Do NOT show all products at once.
-     → Instead, first list available brands only.
-       Example: “We have Apple, Samsung, Xiaomi, and Realme. Which brand would you like to explore?”
-
-6. Step-by-Step Flow:
-   - Only move one step forward at a time.
-   - Each message should logically follow the user’s previous response.
-   - Maintain a smooth, sales-oriented but friendly conversation style.
-
-EXAMPLE RESPONSES:
-- "That sounds great! What's your name and phone number?"
-- "Perfect! I'll help you with that. Can you tell me your contact details?"
-- "Awesome! Let me get your order set up. What's your name?"
-- "Great choice! I just need your contact information to complete the order."
-- "Excellent! I've got that down. What's your phone number so we can reach you?"
-
-CURRENT INVENTORY STATUS:
-${productInfo}
-
-INVENTORY RULES:
-1. If the inventory above lists specific products with IDs, you may use them directly.
-2. If the inventory says "Product catalog is available via search", you MUST SEARCH first.
-3. PRE-SEARCH BEHAVIOR:
-   - If user asks "Do you have X?", use [INTENT:SEARCH_PRODUCT] {"searchQuery": "X"}.
-   - Do NOT say "We don't have X" unless you have already searched and found nothing.
-   - Do NOT make up products.
-4. POST-SEARCH BEHAVIOR (when you have search results in context):
-   - Use the product details provided in the search results.
-   - Quote exact prices and IDs from the search results.
-
-${
-  userOrders && userOrders.length > 0
-    ? `CUSTOMER'S ORDER HISTORY:
-${userOrders.map((order) => `- Order #${order.id}: ${order.details?.items || 'N/A'} (${order.status})`).join('\n')}`
-    : ''
-}
-
-PRODUCT IMAGE RULES:
-- The server base URL for building absolute image URLs is: ${baseUrl}
-- Product data may include image keys like "public/uploads/filename.jpg"
-- When you need to return image URLs, construct absolute URLs by prefixing with the base URL if they are relative
-
-
-
-ORDER CREATION PROCESS:
-When a customer wants to place an order, follow these steps:
-
-1. FIRST: Respond naturally to the customer with confirmation (e.g., "Great! I'll process your order...")
-2. THEN: Add the order data in this EXACT format at the end of your response:
-
-[INTENT:CREATE_ORDER]
-{
-  "customerName": "extracted name or 'Not provided'",
-  "customerContact": "phone/email if provided or 'Not provided'", 
-  "items": [
-    {
-      "productId": "MUST be the exact numeric product ID from inventory OR search results (integer, not product name)",
-      "quantity": "number of items (integer)",
-      "price": "price per unit from inventory OR search results (number)"
-    },
-    {
-      "productId": "MUST be the exact numeric product ID from inventory OR search results (integer, not product name)",
-      "quantity": "number of items (integer)",
-      "price": "price per unit from inventory (number)"
-    }
-  ],
-  "notes": "any special requests or details"
-}
-
-CRITICAL ORDER CREATION RULES:
-🚨 NEVER CREATE AN ORDER WITHOUT ESSENTIAL INFORMATION:
-- Customer contact (phone number or email) - REQUIRED
-- Delivery location/address - REQUIRED  
-- Payment method (cash, card, transfer, etc.) - REQUIRED
-- Product details (what they want to buy) - REQUIRED
-
-🚨 IF ANY REQUIRED INFO IS MISSING:
-- DO NOT create an order
-- Ask the customer for the missing information
-- Use [INTENT:ASK_FOR_INFO] instead of [INTENT:CREATE_ORDER]
-- Be polite but firm about needing complete information
-
-CRITICAL RULES FOR MULTIPLE PRODUCTS:
-- If customer mentions multiple products (e.g., "{productName} va telefon", "both X and Y"), create separate items for EACH product
-- Each product mentioned by the customer should have its own item object in the items array
-- Use exact numeric product ID from inventory, NOT product name
-- If a product mentioned by customer is not in inventory, skip that product but include the ones that exist
-- Default quantity is 1 if not specified by customer
-- Extract contact information from the message if provided (phone numbers, email addresses)
-- Look for phone numbers in formats: +998XXXXXXXXX, 998XXXXXXXXX, XXXXXXXXX
-- Look for email addresses in formats: user@domain.com
-- If no contact info is provided, DO NOT CREATE ORDER - ask for it instead
-- The [INTENT:CREATE_ORDER] section will be automatically removed before sending to customer
-- Only the natural response text will be shown to the customer
-- The order data will be processed by the system automatically
-- DO NOT include order confirmation messages (like "Buyurtma muvaffaqiyatli tasdiqlandi") in your response
-- The system will generate the confirmation message automatically after processing the order
-
-MANDATORY MULTIPLE PRODUCTS HANDLING:
-- When customer says "X va Y" (X and Y), you MUST create 2 separate items
-- When customer says "both X and Y", you MUST create 2 separate items  
-- When customer says "X ni Y ni birdaniga" (X and Y together), you MUST create 2 separate items
-- ALWAYS check the inventory list above to find the exact Product IDs
-- ALWAYS create a complete JSON with proper closing brackets
-- NEVER create incomplete JSON that will cause parsing errors
-
-EXAMPLES:
-- Customer: "{productName} va telefon sotib olaman" → Create 2 items (one for {productName}, one for telefon)
-- Customer: "{productName} va {productName} ni birdaniga sotib olaman" → Create 2 items (one for {productName}, one for {productName})
-- Customer: "3 ta telefon va 2 ta {productName}" → Create 2 items (one with quantity 3 for telefon, one with quantity 2 for {productName})
-
-SPECIFIC EXAMPLE FOR CURRENT CASE:
-Customer: "{productName1} va {productName2} ni birdaniga sotib olaman"
-Available products: Product ID: 1 ({productName1}), Product ID: 2 ({productName2})
-Response should be:
-[INTENT:CREATE_ORDER]
-{
-  "customerName": "Not provided",
-  "customerContact": "Not provided",
-  "items": [
-    {
-      "productId": 2,
-      "quantity": 1,
-      "price": 100
-    },
-    {
-      "productId": 1,
-      "quantity": 1,
-      "price": {productPrice}
-    }
-  ],
-  "notes": ""
-}
-
-CRITICAL: If customer mentions "{productName} va {productName}" or "{productName} va {productName}", you MUST create TWO items:
-- One item with productId: 2 ({productName2}, price: {productPrice2} {productCurrency2})
-- One item with productId: 1 ({productName1}, price: {productPrice1} {productCurrency1})
-- ALWAYS include BOTH products in the items array
-- NEVER create incomplete JSON that stops after the first item
-
-MANDATORY JSON COMPLETION RULES:
-- ALWAYS complete the JSON structure with proper closing brackets
-- ALWAYS include ALL products mentioned by the customer
-- NEVER stop mid-JSON after the first item
-- If you start creating items array, you MUST finish it completely
-- Double-check your JSON before ending the response
-
-2. When customer asks about their orders, use:
-[INTENT:FETCH_ORDERS]
-
-3. When customer wants to cancel an order, use:
-[INTENT:CANCEL_ORDER]
-{
-  "orderId": "extracted order number or null if not specified"
-}
-
-4. When customer wants to order but is missing required information, use:
-[INTENT:ASK_FOR_INFO]
-{
-  "missingInfo": ["contact", "location", "payment", "products"],
-  "message": "polite message asking for missing information"
-}
-
-5. When customer asks about a product (e.g., 'Do you have red dress?', 'Show me shoes', 'I need something for summer'), use:
-[INTENT:SEARCH_PRODUCT]
-{
-  "searchQuery": "extracted search terms (e.g., 'red dress', 'summer shoes')"
-}
-
-EXAMPLES OF SEARCH_PRODUCT:
-- Customer: "Do you have any red dresses?" -> [INTENT:SEARCH_PRODUCT] { "searchQuery": "red dress" }
-- Customer: "Show me sneakers" -> [INTENT:SEARCH_PRODUCT] { "searchQuery": "sneakers" }
-- Customer: "I need a gift for my wife" -> [INTENT:SEARCH_PRODUCT] { "searchQuery": "gift for wife" }
-
-EXAMPLES OF ASK_FOR_INFO:
-- Customer: "{productName} sotib olaman" (no contact/location/payment) → Ask for missing info
-- Customer: "{productName} va {productName} sotib olaman, telefon: +998901234567" (missing location/payment) → Ask for location and payment method
-- Customer: "{productName} sotib olaman, manzil: Toshkent" (missing contact/payment) → Ask for contact and payment method
-
-
-IMPORTANT CONVERSATION RULES:
-- If customer has already agreed to order something, don't ask again - proceed with order details
-- If customer says "yes" to ordering, immediately create the order and confirm
-- Don't repeat the same product suggestion multiple times
-- If customer seems confused, ask clarifying questions instead of repeating
-- Keep the conversation flowing naturally - don't get stuck in loops
-
-Conversation History:
-${contextMessages}
-
-Customer: ${userText}
-
-IMPORTANT: Read the conversation history carefully. If the customer has already agreed to order something or if you've already asked about ordering, don't repeat yourself. Move the conversation forward naturally.`;
+    return buildConversationPrompt({
+      userText,
+      contextMessages,
+      productInfo,
+      baseUrl,
+      langInstruction,
+      userOrders,
+    });
   }
+
 
   private async parseResponse(aiText: string): Promise<AiResponse> {
     // First, try to parse strict JSON for product inquiry outputs
@@ -835,8 +633,8 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
       return false;
     }
 
-    const status = (error as any)?.status ?? (error as any)?.code;
-    const message = (error as any)?.message ?? String(error);
+    const status = error?.status ?? error?.code;
+    const message = error?.message ?? String(error);
 
     if (status === 429 || status === 503) {
       return true;
@@ -866,10 +664,6 @@ IMPORTANT: Read the conversation history carefully. If the customer has already 
     customerMessage: string,
   ): Promise<string> {
     try {
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-      });
-
       const prompt = `You are the Aletis AI assistant. Generate an order confirmation message in the SAME language as the customer's message.
 
 CUSTOMER'S MESSAGE: "${customerMessage}"
@@ -934,9 +728,7 @@ Is there anything else I can help you with?
 
 Generate the confirmation message now:`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const confirmationMessage = response.text().trim();
+      const confirmationMessage = (await this.generateText(prompt)).trim();
 
       this.logger.log(
         `Order confirmation generated for order ${orderData.orderId}`,
@@ -971,25 +763,21 @@ Is there anything else I can help you with?`;
         return 'uz';
       }
 
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
-      });
-
       const prompt = `Detect the language of the following text and return only the language code (uz, ru, en).
 
 Text: "${text}"
 
 Rules:
 - If the text contains Cyrillic characters (а, б, в, г, д, е, ё, ж, з, и, й, к, л, м, н, о, п, р, с, т, у, ф, х, ц, ч, ш, щ, ъ, ы, ь, э, ю, я) → return "ru"
-- If the text contains Latin characters with Uzbek-specific letters (oʻ, gʻ, sh, ch) or common Uzbek words → return "uz"  
+- If the text contains Latin characters with Uzbek-specific letters (oʻ, gʻ, sh, ch) or common Uzbek words → return "uz"
 - If the text contains only basic Latin characters and English words → return "en"
 - If unsure, return "uz" (default)
 
 Return only the language code:`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const languageCode = response.text().trim().toLowerCase();
+      const languageCode = (await this.generateText(prompt))
+        .trim()
+        .toLowerCase();
 
       // Validate and return supported language codes
       if (['uz', 'ru', 'en'].includes(languageCode)) {
@@ -1043,10 +831,6 @@ Return only the language code:`;
         return message;
       }
 
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
-      });
-
       const languageNames: Record<string, string> = {
         uz: 'Uzbek',
         ru: 'Russian',
@@ -1059,9 +843,7 @@ ${message}
 
 Translated message:`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      return (await this.generateText(prompt)).trim();
     } catch (error) {
       this.logger.warn(`Translation failed: ${error.message}`);
       return message; // Return original message if translation fails
@@ -1076,10 +858,6 @@ Translated message:`;
     userMessage: string,
   ): Promise<string> {
     try {
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
-      });
-
       const ordersData = orders.map((order, index) => {
         const status = this.getStatusEmoji(order.status);
         const items = order.items || 'No items specified';
@@ -1112,9 +890,7 @@ INSTRUCTIONS:
 
 Generate a natural, friendly response:`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      return (await this.generateText(prompt)).trim();
     } catch (error) {
       this.logger.warn(
         `Failed to generate orders list response: ${error.message}`,
@@ -1149,10 +925,6 @@ Generate a natural, friendly response:`;
     userMessage: string,
   ): Promise<string> {
     try {
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
-      });
-
       const prompt = `You are Aletis, a friendly AI assistant. The customer asked: "${userMessage}"
 
 ORDER CANCELLED:
@@ -1172,9 +944,7 @@ INSTRUCTIONS:
 
 Generate a natural, friendly response:`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      return (await this.generateText(prompt)).trim();
     } catch (error) {
       this.logger.warn(
         `Failed to generate cancellation response: ${error.message}`,

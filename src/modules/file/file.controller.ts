@@ -36,7 +36,10 @@ import { PaginationDto } from '@/shared/dto';
 import { JwtAuthGuard } from '@auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@auth/decorators/current-user.decorator';
 import type { JwtPayload } from '@auth/strategies/jwt.strategy';
-import { multerConfig } from './config/multer.config';
+import {
+  MAX_UPLOAD_FILES_PER_REQUEST,
+  multerConfig,
+} from './config/multer.config';
 import { PrismaService } from '@/core/prisma/prisma.service';
 
 @ApiTags('Files')
@@ -108,12 +111,14 @@ export class FileController {
       file,
       Number(user.userId),
       // Organization is optional; allow uploads for users without an organization (e.g., profile logos)
-      await this.getUserOrganizationId(Number(user.userId)) || undefined,
+      (await this.getUserOrganizationId(Number(user.userId))) || undefined,
     );
   }
 
   @Post('upload-many')
-  @UseInterceptors(FilesInterceptor('files', 10, multerConfig))
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_UPLOAD_FILES_PER_REQUEST, multerConfig),
+  )
   @ApiOperation({ summary: 'Upload multiple files' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -128,7 +133,7 @@ export class FileController {
             type: 'string',
             format: 'binary',
           },
-          description: 'The files to upload (max 10)',
+          description: `The files to upload (max ${MAX_UPLOAD_FILES_PER_REQUEST})`,
         },
       },
       required: ['files'],
@@ -163,7 +168,7 @@ export class FileController {
       files,
       Number(user.userId),
       // Organization is optional; allow uploads for users without an organization
-      await this.getUserOrganizationId(Number(user.userId)) || undefined,
+      (await this.getUserOrganizationId(Number(user.userId))) || undefined,
     );
   }
 

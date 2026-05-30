@@ -1,30 +1,46 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter';
 import { TelegramLoggerService } from './core/telegram-logger/telegram-logger.service';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import helmet from 'helmet';
+
+function parseAllowedOrigins(): string[] {
+  return (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
+    bufferLogs: true,
   });
+  app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
+  const logger = new Logger('Bootstrap');
 
   app.use(helmet());
+
+  const allowedOrigins = parseAllowedOrigins();
+  if (allowedOrigins.length === 0) {
+    logger.warn(
+      'ALLOWED_ORIGINS is empty; all cross-origin requests will be rejected.',
+    );
+  }
   app.enableCors({
-    origin: '*',
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+    credentials: true,
   });
+
   const telegramLogger = app.get(TelegramLoggerService);
   app.useGlobalFilters(new GlobalExceptionFilter(telegramLogger));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
       transform: true,
-      forbidUnknownValues: false,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
     }),
   );
   app.enableVersioning({
@@ -60,8 +76,8 @@ async function bootstrap() {
   const port = process.env.PORT || 4000;
   await app.listen(port);
 
-  console.log(`🚀 Application is running on: http://localhost:${port}`);
-  console.log(`📚 Swagger docs: http://localhost:${port}/docs`);
-  console.log(`📊 Health check: http://localhost:${port}/health`);
+  logger.log(`Application is running on: http://localhost:${port}`);
+  logger.log(`Swagger docs: http://localhost:${port}/docs`);
+  logger.log(`Health check: http://localhost:${port}/health`);
 }
 bootstrap();

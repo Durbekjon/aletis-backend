@@ -10,10 +10,14 @@ import { ProductsModule } from '@modules/products/products.module';
 import { TelegramModule } from '@modules/telegram/telegram.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { EmbadingModule } from '@modules/embading/embading.module';
+import { GeminiModule } from '@core/gemini/gemini.module';
+import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
+import { CustomerSyncService } from './services/customer-sync.service';
 
 @Module({
   imports: [
     CoreModule,
+    GeminiModule,
     BotsModule,
     CustomersModule,
     MessagesModule,
@@ -23,7 +27,12 @@ import { EmbadingModule } from '@modules/embading/embading.module';
     EmbadingModule,
   ],
   controllers: [WebhookController],
-  providers: [WebhookService, AiResponseHandlerService],
+  providers: [
+    WebhookService,
+    AiResponseHandlerService,
+    WebhookSignatureGuard,
+    CustomerSyncService,
+  ],
   exports: [WebhookService, AiResponseHandlerService],
 })
 export class WebhookModule {}

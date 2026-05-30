@@ -28,6 +28,7 @@ import { ActivityLogService } from '../activity-log/activity-log.service';
 import { ActionType, EntityType } from '@prisma/client';
 import { TelegramService } from '../telegram/telegram.service';
 import { FileService } from '../file/file.service';
+import { randomBytes } from 'crypto';
 export interface TelegramBotInfo {
   id: string;
   is_bot: boolean;
@@ -419,10 +420,14 @@ export class BotsService {
       throw new NotFoundException('Bot not found');
     }
     const decryptedToken = this.encryption.decrypt(bot.token);
+    // Telegram only allows A-Z a-z 0-9 _ - in secret_token, max 256 chars.
+    // 32 random bytes hex-encoded -> 64 chars, well within limits.
+    const webhookSecret = randomBytes(32).toString('hex');
     const result = await this.webhookHelper.setWebhook(
       decryptedToken,
       botId,
       organization.id,
+      webhookSecret,
     );
     if (result.isOK) {
       await this.prisma.bot.update({
@@ -430,6 +435,7 @@ export class BotsService {
         data: {
           status: BotStatus.ACTIVE,
           activatedAt: new Date(),
+          webhookSecret,
         },
       });
 
@@ -472,6 +478,7 @@ export class BotsService {
         data: {
           status: BotStatus.INACTIVE,
           deactivatedAt: new Date(),
+          webhookSecret: null,
         },
       });
 

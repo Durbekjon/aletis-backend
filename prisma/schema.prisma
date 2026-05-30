@@ -15,6 +15,7 @@ model User {
   lastName         String?
   email            String    @unique
   password         String
+  isPlatformAdmin  Boolean   @default(false)
   refreshToken     String?
   resetToken       String?
   resetTokenExpiry DateTime?
@@ -31,7 +32,6 @@ model Organization {
   id                 Int                 @id @default(autoincrement())
   name               String              @default("Untitled")
   description        String?
-  category           BUSINESS_CATEGORY   @default(OTHER)
   bots               Bot[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -39,7 +39,6 @@ model Organization {
   members            Member[]
   products           Product[]
   orders             Order[]
-  schema             ProductSchema?
   files              File[]
   customers          Customer[]
   onboardingProgress OnboardingProgress?
@@ -51,39 +50,24 @@ model Organization {
   @@map("organizations")
 }
 
-enum BUSINESS_CATEGORY {
-  FASHION
-  ELECTRONICS
-  COSMETICS
-  SERVICES
-  FOOD
-  BOOKS
-  HOME
-  SPORTS
-  AUTOMOTIVE
-  OTHER
-}
-
 model OnboardingProgress {
   id                  Int              @id @default(autoincrement())
   organizationId      Int              @unique
   organization        Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  percentage          Int              @default(20)
-  isCategorySelected  Boolean          @default(false)
-  isSchemaConfigured  Boolean          @default(false)
+  percentage          Int              @default(0)
   isFirstProductAdded Boolean          @default(false)
   isBotConnected      Boolean          @default(false)
-  nextStep            OnboardingStep   @default(SELECT_CATEGORY)
+  isChannelConnected  Boolean          @default(false)
+  nextStep            OnboardingStep   @default(ADD_FIRST_PRODUCT)
   status              OnboardingStatus @default(INCOMPLETE)
 
   @@map("onboarding_progress")
 }
 
 enum OnboardingStep {
-  SELECT_CATEGORY
-  CONFIGURE_SCHEMA
   ADD_FIRST_PRODUCT
   CONNECT_BOT
+  CONNECT_CHANNEL
 }
 
 enum OnboardingStatus {
@@ -99,8 +83,8 @@ model Product {
   images         File[]
   posts          Post[]
   quantity       Int           @default(1)
-  schemaId       Int
-  schema         ProductSchema @relation(fields: [schemaId], references: [id])
+  categoryId     Int
+  category       Category      @relation(fields: [categoryId], references: [id])
   fields         FieldValue[]
   organizationId Int
   organization   Organization  @relation(fields: [organizationId], references: [id])
@@ -115,6 +99,7 @@ model Product {
   @@index([name])
   @@index([isDeleted])
   @@index([organizationId, createdAt])
+  @@index([categoryId])
   @@map("products")
 }
 
@@ -134,28 +119,58 @@ enum Currency {
   JPY
 }
 
-model ProductSchema {
-  id             Int          @id @default(autoincrement())
-  name           String
-  fields         Field[]
-  products       Product[]
-  organizationId Int          @unique
-  organization   Organization @relation(fields: [organizationId], references: [id])
+model Category {
+  id          Int             @id @default(autoincrement())
+  parentId    Int?
+  parent      Category?       @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children    Category[]      @relation("CategoryTree")
+  slug        String          @unique
+  name_en     String
+  name_ru     String
+  name_uz     String
+  iconKey     String?
+  isLeaf      Boolean         @default(false)
+  depth       Int             @default(0)
+  path        Int[]
+  isArchived  Boolean         @default(false)
+  archivedAt  DateTime?
+  schema      CategorySchema?
+  products    Product[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
-  @@map("product_schemas")
+  @@index([parentId])
+  @@index([isArchived])
+  @@map("categories")
 }
 
-model Field {
-  id          Int           @id @default(autoincrement())
-  schemaId    Int
-  schema      ProductSchema @relation(fields: [schemaId], references: [id])
-  name        String
-  type        FieldType
-  required    Boolean
-  order       Int           @default(0)
-  options     String[]      @default([]) // For ENUM field types
-  fieldValues FieldValue[]
+model CategorySchema {
+  id         Int           @id @default(autoincrement())
+  categoryId Int           @unique
+  category   Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  fields     SchemaField[]
 
+  @@map("category_schemas")
+}
+
+model SchemaField {
+  id                      Int            @id @default(autoincrement())
+  schemaId                Int
+  schema                  CategorySchema @relation(fields: [schemaId], references: [id], onDelete: Cascade)
+  inheritedFromCategoryId Int?
+  key                     String
+  label_en                String
+  label_ru                String
+  label_uz                String
+  type                    FieldType
+  required                Boolean        @default(false)
+  order                   Int            @default(0)
+  options                 Json?
+  validation              Json?
+  fieldValues             FieldValue[]
+
+  @@unique([schemaId, key])
+  @@index([schemaId, order])
   @@map("schema_fields")
 }
 
@@ -165,7 +180,7 @@ model FieldValue {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   fieldId Int
-  field   Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  field   SchemaField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
   // qiymatni universal saqlash uchun:
   valueText   String?
@@ -186,11 +201,14 @@ enum FieldType {
   DATE
   BOOLEAN
   ENUM
+  ENUM_MULTI
+  URL
 }
 
 model File {
   id           Int        @id @default(autoincrement())
-  key          String     @unique // relative path: "public/uploads/abc.png"
+  key          String     @unique // Fully-qualified URL of the asset (e.g. https://ik.imagekit.io/<acc>/aletis/<name>.jpg)
+  externalId   String?    @unique // Provider-specific id (e.g. ImageKit fileId) used for deletes.
   originalName String
   size         Int
   mimeType     String
@@ -258,6 +276,7 @@ model Bot {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   token          String       @unique
+  webhookSecret  String?
   status         BotStatus    @default(INACTIVE)
   telegramId     String
   name           String
@@ -273,6 +292,7 @@ model Bot {
   logoId         Int?
   logo           File?        @relation("bot_logos", fields: [logoId], references: [id], onDelete: SetNull)
 
+  @@index([organizationId])
   @@index([organizationId, name])
   @@index([organizationId, username])
   @@map("bots")
@@ -300,7 +320,9 @@ model Customer {
 
   @@unique([telegramId, organizationId, botId])
   @@index([telegramId])
+  @@index([organizationId])
   @@index([organizationId, createdAt])
+  @@index([organizationId, botId])
   @@index([username])
   @@index([name])
   @@map("customers")
@@ -318,6 +340,8 @@ model Message {
   isInquiry  Boolean    @default(false)
 
   @@index([botId, createdAt])
+  @@index([botId, customerId])
+  @@index([customerId, createdAt])
   @@map("messages")
 }
 
@@ -448,19 +472,6 @@ enum PostStatus {
   FAILED
 }
 
-enum CompanyType {
-  CLOTHING
-  FOOD
-  FURNITURE
-  ELECTRONICS
-  COSMETICS
-  TOYS
-  BOOKS
-  SPORTS
-  HEALTH
-  OTHER
-}
-
 enum SenderType {
   USER
   BOT
@@ -502,8 +513,8 @@ enum EntityType {
   CUSTOMER
   BOT
   CHANNEL
-  SCHEMA
   POST
+  CATEGORY
 }
 
 enum ActionType {
@@ -512,6 +523,34 @@ enum ActionType {
   DELETE
   STATUS_CHANGE
   PUBLISH
+}
+
+model AiApiKey {
+  id            Int           @id @default(autoincrement())
+  provider      AiProvider    @default(GEMINI)
+  label         String
+  encryptedKey  String
+  status        AiKeyStatus   @default(ACTIVE)
+  exhaustedAt   DateTime?
+  usageCount    Int           @default(0)
+  lastUsedAt    DateTime?
+  lastErrorAt   DateTime?
+  lastError     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([provider, label])
+  @@index([provider, status, exhaustedAt])
+  @@map("ai_api_keys")
+}
+
+enum AiProvider {
+  GEMINI
+}
+
+enum AiKeyStatus {
+  ACTIVE
+  DISABLED
 }
 
 model InstagramAccount {

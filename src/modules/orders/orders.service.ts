@@ -277,8 +277,9 @@ export class OrdersService {
 
       // If no items from details.items, create order items from productIds
       if (orderItemsData.length === 0) {
+        const productById = new Map(products.map((p) => [p.id, p]));
         orderItemsData = dto.productIds.map((productId) => {
-          const product = products.find((p) => p.id === productId);
+          const product = productById.get(productId);
           return {
             productId,
             quantity: 1, // Default quantity for manual orders

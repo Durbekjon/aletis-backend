@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { OnboardingStep, OnboardingStatus } from '@prisma/client';
 import { IsEnum, IsNotEmpty } from 'class-validator';
 
@@ -6,7 +6,7 @@ export class CurrentStepResponseDto {
   @ApiProperty({
     description: 'Current onboarding step',
     enum: OnboardingStep,
-    example: OnboardingStep.SELECT_CATEGORY,
+    example: OnboardingStep.ADD_FIRST_PRODUCT,
   })
   step: OnboardingStep;
 }
@@ -17,10 +17,9 @@ export class OnboardingStepsResponseDto {
     type: [String],
     enum: OnboardingStep,
     example: [
-      OnboardingStep.SELECT_CATEGORY,
-      OnboardingStep.CONFIGURE_SCHEMA,
       OnboardingStep.ADD_FIRST_PRODUCT,
       OnboardingStep.CONNECT_BOT,
+      OnboardingStep.CONNECT_CHANNEL,
     ],
   })
   steps: OnboardingStep[];
@@ -35,23 +34,11 @@ export class OnboardingProgressResponseDto {
 
   @ApiProperty({
     description: 'Completion percentage',
-    example: 40,
+    example: 33,
     minimum: 0,
     maximum: 100,
   })
   percentage: number;
-
-  @ApiProperty({
-    description: 'Whether category has been selected',
-    example: true,
-  })
-  isCategorySelected: boolean;
-
-  @ApiProperty({
-    description: 'Whether schema has been configured',
-    example: false,
-  })
-  isSchemaConfigured: boolean;
 
   @ApiProperty({
     description: 'Whether first product has been added',
@@ -66,9 +53,15 @@ export class OnboardingProgressResponseDto {
   isBotConnected: boolean;
 
   @ApiProperty({
+    description: 'Whether a Telegram channel has been connected',
+    example: false,
+  })
+  isChannelConnected: boolean;
+
+  @ApiProperty({
     description: 'Next step to complete',
     enum: OnboardingStep,
-    example: OnboardingStep.CONFIGURE_SCHEMA,
+    example: OnboardingStep.CONNECT_BOT,
   })
   nextStep: OnboardingStep;
 
@@ -82,9 +75,9 @@ export class OnboardingProgressResponseDto {
 
 export class UpdateNextStepDto {
   @ApiProperty({
-    description: 'The step to move to',
+    description: 'The step to mark complete',
     enum: OnboardingStep,
-    example: OnboardingStep.CONFIGURE_SCHEMA,
+    example: OnboardingStep.ADD_FIRST_PRODUCT,
   })
   @IsEnum(OnboardingStep)
   @IsNotEmpty()

@@ -3,7 +3,7 @@ import { AuthModule } from '@auth/auth.module';
 import { TelegramModule } from '@telegram/telegram.module';
 import { ChannelsModule } from '@channels/channels.module';
 import { OrganizationsModule } from '@organizations/organizations.module';
-import { SchemaModule } from '@modules/product-schema/schema.module';
+import { CategoriesModule } from '@modules/categories/categories.module';
 import { FileModule } from '@file/file.module';
 import { ProductsModule } from '@products/products.module';
 import { BotsModule } from '@bots/bots.module';
@@ -17,12 +17,13 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
 import { EmbadingModule } from './embading/embading.module';
+import { AiKeysModule } from './ai-keys/ai-keys.module';
 
 @Module({
   imports: [
     AuthModule,
     OrganizationsModule,
-    SchemaModule,
+    CategoriesModule,
     FileModule,
     ProductsModule,
     BotsModule,
@@ -38,6 +39,7 @@ import { EmbadingModule } from './embading/embading.module';
     AnalyticsModule,
     ActivityLogModule,
     EmbadingModule,
+    AiKeysModule,
   ],
 })
 export class ModulesModule {}

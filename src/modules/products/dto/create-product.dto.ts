@@ -95,6 +95,16 @@ export class CreateProductDto {
   @IsEnum(ProductStatus)
   status: ProductStatus = ProductStatus.ACTIVE;
 
+  @ApiProperty({
+    description:
+      'The id of the leaf Category this product belongs to. Schema is resolved from the category.',
+    example: 42,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  categoryId: number;
+
   @ApiPropertyOptional({
     description: 'Array of file IDs for product images',
     type: [Number],

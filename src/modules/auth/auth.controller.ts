@@ -42,17 +42,13 @@ export class AuthController {
   ) {}
   @Post('register')
   @UseGuards(ThrottlerGuard)
-  @ApiOperation({ summary: 'Register a new user' })
-  @ApiBody({ type: RegisterDto })
-  @ApiOkResponse({
-    description: 'Tokens issued',
-    schema: {
-      properties: {
-        accessToken: { type: 'string' },
-        refreshToken: { type: 'string' },
-      },
-    },
+  @ApiOperation({
+    summary: 'Register a new user',
+    description:
+      'Creates a User + Organization + Member in a single transaction. The seller is fully onboarded in one round-trip.',
   })
+  @ApiBody({ type: RegisterDto })
+  @ApiOkResponse({ description: 'Tokens issued + auto-created organization' })
   async register(@Body() body: RegisterDto) {
     return this.authService.register(body);
   }
@@ -122,15 +118,19 @@ export class AuthController {
 
   @Post('forgot-password')
   @UseGuards(ThrottlerGuard)
-  @ApiOperation({ summary: 'Request password reset token' })
+  @ApiOperation({
+    summary: 'Request password reset',
+    description:
+      'Always returns { ok: true } regardless of whether the email is registered, to avoid account enumeration. If the email exists, a reset token is generated and (in production) emailed to the user.',
+  })
   @ApiBody({ type: ForgotPasswordDto })
   @ApiOkResponse({
-    description: 'Reset token (for demo/testing)',
-    schema: { properties: { resetToken: { type: 'string' } } },
+    description: 'Reset request accepted',
+    schema: { properties: { ok: { type: 'boolean' } } },
   })
   async forgotPassword(
     @Body() body: ForgotPasswordDto,
-  ): Promise<{ resetToken: string }> {
+  ): Promise<{ ok: true }> {
     return this.authService.forgotPassword(body.email);
   }
 
@@ -140,7 +140,11 @@ export class AuthController {
   @ApiBody({ type: ResetPasswordDto })
   @ApiOkResponse({ description: 'Password reset successful' })
   async resetPassword(@Body() body: ResetPasswordDto): Promise<void> {
-    await this.authService.resetPassword(body.token, body.newPassword);
+    await this.authService.resetPassword(
+      body.email,
+      body.token,
+      body.newPassword,
+    );
   }
 
   @Patch('update-profile')
@@ -253,12 +257,8 @@ export class AuthController {
           String(onboarding.isFirstProductAdded),
         );
         url.searchParams.set(
-          'onboardCategory',
-          String(onboarding.isCategorySelected),
-        );
-        url.searchParams.set(
-          'onboardSchema',
-          String(onboarding.isSchemaConfigured),
+          'onboardChannel',
+          String(onboarding.isChannelConnected),
         );
       }
     }
